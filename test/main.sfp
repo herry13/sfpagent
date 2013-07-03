@@ -1,0 +1,42 @@
+include "file.sfp"
+
+/*test isa File {
+	path is "/tmp/test"
+	content is "1234"
+	user is "herry"
+	group is "herry"
+}*/
+
+
+/*a {
+	b = 1
+}*/
+
+test isa File {
+	path is "/tmp/test"
+	content is "1234"
+	user is "herry"
+	group is "herry"
+
+	x {
+		test3 isa File {
+			path is "/tmp/test3"
+			user is "root"
+
+			test4 isa File {
+				path is "/tmp/test4"
+			}
+		}
+
+	}
+	//z = "1"
+}
+
+/*x {
+	test2 isa File {
+		path is "/tmp/test2"
+	}
+	test3 isa File {
+		path is "/tmp/test3"
+	}
+}*/
