@@ -10,3 +10,5 @@ require libdir + '/sfpagent/executor.rb'
 
 require libdir + '/sfpagent/runtime.rb'
 require libdir + '/sfpagent/module.rb'
+
+require libdir + '/sfpagent/agent.rb'

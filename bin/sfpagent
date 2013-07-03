@@ -14,6 +14,9 @@ Usage:
 where [options] are:
 EOS
 
+	opt :start, "Start the daemon agent."
+	opt :stop, "Stop the daemon agent."
+	opt :status, "Print the status of the daemon agent."
 	opt :state, "Load the runtime modules and then print their states in JSON."
 	opt :execute, "Execute a plan in given file."
 end
@@ -27,7 +30,16 @@ end
 
 filepath = ARGV[0].to_s
 
-if filepath != ''
+if opts[:start]
+	Sfp::Agent.start
+
+elsif opts[:stop]
+	Sfp::Agent.stop
+
+elsif opts[:status]
+	Sfp::Agent.status
+
+elsif filepath != ''
 	if opts[:state]
 		state = Sfp::Runtime.new(parse(ARGV[0])).get_state
 		puts JSON.pretty_generate(state)
@@ -37,6 +49,8 @@ if filepath != ''
 	else
 		Trollop::help
 	end
+
 else
 	Trollop::help
+
 end
