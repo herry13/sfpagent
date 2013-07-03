@@ -1,0 +1,42 @@
+#!/usr/bin/env ruby
+
+libdir = File.expand_path(File.dirname(__FILE__))
+require "#{libdir}/../lib/sfpagent"
+
+opts = Trollop::options do
+	version "sfpagent 0.0.1 (c) 2013 Herry"
+	banner <<-EOS
+SFP Agent that provides a Ruby framework for managing system configurations.
+
+Usage:
+       sfpagent [options] <file>
+
+where [options] are:
+EOS
+
+	opt :state, "Load the runtime modules and then print their states in JSON."
+	opt :execute, "Execute a plan in given file."
+end
+
+def parse(filepath)
+	home_dir = File.expand_path(File.dirname(filepath))
+	parser = Sfp::Parser.new({:home_dir => home_dir})
+	parser.parse(File.read(filepath))
+	parser
+end
+
+filepath = ARGV[0].to_s
+
+if filepath != ''
+	if opts[:state]
+		state = Sfp::Runtime.new(parse(ARGV[0])).get_state
+		puts JSON.pretty_generate(state)
+
+	elsif opts[:execute]
+
+	else
+		Trollop::help
+	end
+else
+	Trollop::help
+end
