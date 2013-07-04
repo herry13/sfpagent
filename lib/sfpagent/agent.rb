@@ -27,7 +27,7 @@ module Sfp
 				url = URI.parse("http://localhost:#{config[:Port]}/pid")
 				req = Net::HTTP::Get.new(url.path)
 				Net::HTTP.start(url.host, url.port) { |http| http.request(req) }
-				puts "Agent running with PID #{File.read(PIDFile)}"
+				puts "\nSFP Agent is running with PID #{File.read(PIDFile)}"
 			}
 
 			server.start
@@ -70,7 +70,7 @@ module Sfp
 				else
 					path = (request.path[-1,1] == '/' ? ryyequest.path.chop : request.path)
 					if path == '/pid' and request.peeraddr[2] == 'localhost'
-						save_pid
+						status, content_type, body = save_pid
 					else
 						status = 404
 					end

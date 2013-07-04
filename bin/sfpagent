@@ -9,7 +9,7 @@ opts = Trollop::options do
 SFP Agent that provides a Ruby framework for managing system configurations.
 
 Usage:
-       sfpagent [options] <file>
+       sfpagent [options] [model-file]
 
 where [options] are:
 EOS
@@ -17,7 +17,7 @@ EOS
 	opt :start, "Start the daemon agent."
 	opt :stop, "Stop the daemon agent."
 	opt :status, "Print the status of the daemon agent."
-	opt :state, "Load the runtime modules and then print their states in JSON."
+	opt :state, "Load the runtime modules and then print their states in JSON. [model-file] shoud be specified."
 	opt :execute, "Execute a plan in given file."
 end
 
@@ -39,16 +39,16 @@ elsif opts[:stop]
 elsif opts[:status]
 	Sfp::Agent.status
 
-elsif filepath != ''
-	if opts[:state]
-		state = Sfp::Runtime.new(parse(ARGV[0])).get_state
-		puts JSON.pretty_generate(state)
+elsif opts[:state]
+	abort "[model-file] is not specified!\nUse \"sfpagent -h\" for more details.\n" if filepath == ''
 
-	elsif opts[:execute]
+	state = Sfp::Runtime.new(parse(filepath)).get_state
+	puts JSON.pretty_generate(state)
 
-	else
-		Trollop::help
-	end
+elsif opts[:execute]
+	abort "[model-file] is not specified!\nUse \"sfpagent -h\" for more details.\n" if filepath == ''
+
+	abort "Not yet implemented!"
 
 else
 	Trollop::help
