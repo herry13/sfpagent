@@ -31,6 +31,7 @@ module Sfp
 				puts "\nSFP Agent is running with PID #{File.read(PIDFile)}"
 			}
 
+			reload_model
 			server.start
 		end
 
@@ -68,11 +69,12 @@ module Sfp
 					f.flock(File::LOCK_EX)
 					f.write(JSON.generate(model))
 					f.flush
+					reload_model
 				}
 				@@logger.info "Setting the model [OK]"
 				return true
 			rescue Exception => e
-				@@logger.warn "Unable to set the model: #{e}"
+				@@logger.error "Setting the model [Failed] #{e}"
 			end
 			false
 		end
@@ -85,7 +87,42 @@ module Sfp
 					return JSON[f.read]
 				}
 			rescue Exception => e
-				@@logger.warn "Unable to get the model: #{e}"
+				@@logger.error "Get the model [Failed] #{e}"
+			end
+			false
+		end
+
+		def self.reload_model
+			model = get_model
+			if model.nil?
+				@@logger.info "There is no model in cache."
+			else
+				begin
+					@@runtime = Sfp::Runtime.new(model)
+					@@logger.info "Reloading the model in cache [OK]"
+				rescue Exception => e
+					@@logger.error "Reloading the model in cache [Failed] #{e}"
+				end
+			end
+		end
+
+		def self.get_state
+			return nil if !defined? @@runtime or @@runtime.nil?
+			begin
+				return @@runtime.get_state
+			rescue Exception => e
+				@@logger.error "Get state [Failed] #{e}"
+			end
+			false
+		end
+
+		def self.execute_action(action)
+			begin
+				@@runtime.execute_action(action)
+				@@logger.info "Executing #{action['name']} [OK]"
+				return true
+			rescue Exception => e
+				@@logger.info "Executing #{action['name']} [Failed] #{e}"
 			end
 			false
 		end
@@ -130,12 +167,15 @@ module Sfp
 			def do_POST(request, response)
 				status = 404
 				content_type, body = ''
-				if not trusted(request.peeraddr[2])
+				if not self.trusted(request.peeraddr[2])
 					status = 403
 				else
 					path = (request.path[-1,1] == '/' ? ryyequest.path.chop : request.path)
 					if path == '/model'
-						status, content_type, body = set_model({:model => query_to_json(request.query)})
+						status, content_type, body = self.set_model({:model => query_to_json(request.query)})
+
+					elsif path == '/execute'
+						status, content_type, body = self.execute({:action => query_to_json(request.query)})
 
 					end
 				end
@@ -146,20 +186,12 @@ module Sfp
 			end
 
 			def get_state(p={})
-				# Get the model.
-				model = Sfp::Agent.get_model
+				state = Sfp::Agent.get_state
 
 				# The model is not exist.
-				return [404, 'text/plain', 'There is no model!'] if model.nil?
+				return [404, 'text/plain', 'There is no model!'] if state.nil?
 
-				if !!model
-					begin
-						state = Sfp::Runtime.new(model).get_state
-						return [200, 'application/json', JSON.generate(state)]
-					rescue Exception => e
-						@logger.warn "Unable to get the state of the model: #{e}"
-					end
-				end
+				return [200, 'application/json', JSON.generate(state)] if !!state
 
 				# There is an error when retrieving the state of the model!
 				[500, '', '']
@@ -183,6 +215,11 @@ module Sfp
 				return [200, 'application/json', JSON.generate(model)] if !!model
 
 				# There is an error when retrieving the model!
+				[500, '', '']
+			end
+
+			def execute(p={})
+				return [200, '', ''] if Sfp::Agent.execute_action(p[:action])
 				[500, '', '']
 			end
 
