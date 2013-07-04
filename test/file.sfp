@@ -20,4 +20,11 @@ schema File {
 			this.group = group
 		}
 	}
+
+	procedure remove {
+		condition { }
+		effect {
+			this.exists is false
+		}
+	}
 }

@@ -41,7 +41,16 @@ module Sfp
 				begin
 					::File.open(@state['path'], 'w') { |f| f.write(p['content']) }
 					return true
-				rescue Exception
+				rescue
+				end
+				false
+			end
+
+			def remove(p={})
+				begin
+					::File.delete(@state['path'])
+					return true
+				rescue
 				end
 				false
 			end
@@ -52,7 +61,7 @@ module Sfp
 					group = (p['group'] == '' ? nil : p['group'])
 					::FileUtils.chown user, group, @state['path']
 					return true
-				rescue Exception => e
+				rescue
 				end
 				false
 			end
