@@ -232,7 +232,7 @@ module Sfp
 		end
 
 		def self.install_module(name, data)
-			return false if not get_modules.rindex(name).nil?
+			#return false if not get_modules.rindex(name).nil?
 			return false if @@config[:module_dir] == ''
 
 			if !File.directory? @@config[:module_dir]
@@ -240,18 +240,22 @@ module Sfp
 				Dir.mkdir(@@config[:module_dir], 0700)
 			end
 
+			# delete old files
+			module_dir = "#{@@config[:module_dir]}/#{name}"
+			system("rm -rf #{module_dir}") if File.exist? module_dir
+
 			# save the archive
-			Dir.mkdir("#{@@config[:module_dir]}/#{name}", 0700)
-			dir = "#{@@config[:module_dir]}/#{name}"
-			File.open("#{dir}/data.tgz", 'wb', 0600) { |f| f.syswrite data }
+			Dir.mkdir("#{module_dir}", 0700)
+			File.open("#{module_dir}/data.tgz", 'wb', 0600) { |f| f.syswrite data }
 
 			# extract the archive and the files
-			system("cd #{dir}; tar xvf #{dir}/data.tgz")
-			Dir.entries(dir).each { |name|
+			system("cd #{module_dir}; tar xvf data.tgz")
+			Dir.entries(module_dir).each { |name|
 				next if name == '.' or name == '..'
-				if File.directory? "#{dir}/#{name}"
-					system("cd #{dir}/#{name}; mv * ..; cd ..; rmdir #{name}; rm data.tgz")
+				if File.directory? "#{module_dir}/#{name}"
+					system("cd #{module_dir}/#{name}; mv * ..; cd ..; rm -rf #{name}")
 				end
+				system("cd #{module_dir}; rm data.tgz")
 			}
 			load_modules(@@config)
 			true
@@ -312,7 +316,6 @@ module Sfp
 			# Handle HTTP Post request
 			#
 			# uri:
-			#	/model => receive a new model and save to cached file
 			#	/execute => receive an action's schema and execute it
 			#
 			def do_POST(request, response)
@@ -322,16 +325,34 @@ module Sfp
 					status = 403
 				else
 					path = (request.path[-1,1] == '/' ? ryyequest.path.chop : request.path)
+					if path == '/execute'
+						status, content_type, body = self.execute({:action => query_to_json(request.query)})
+					end
+				end
+
+				response.status = status
+				response['Content-Type'] = content_type
+				response.body = body
+			end
+
+			# uri:
+			#	/model => receive a new model and save to cached file
+			#	/modules => store a module
+			#
+			def do_PUT(request, response)
+				status = 400
+				content_type, body = ''
+				if not self.trusted(request.peeraddr[2])
+					status = 403
+				else
+					path = (request.path[-1,1] == '/' ? ryyequest.path.chop : request.path)
+
 					if path == '/model'
 						status, content_type, body = self.set_model({:model => query_to_json(request.query)})
-
-					elsif path == '/execute'
-						status, content_type, body = self.execute({:action => query_to_json(request.query)})
 
 					elsif path =~ /\/modules\/.+/
 						status, content_type, body = self.install_module({:name => path[9, path.length-9],
 						                                                  :query => request.query})
-
 					end
 				end
 
