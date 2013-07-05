@@ -276,6 +276,11 @@ module Sfp
 			true
 		end
 
+		def self.get_log
+			return '' if not File.exist?(LogFile)
+			File.read(LogFile)
+		end
+
 		class Handler < WEBrick::HTTPServlet::AbstractServlet
 			def initialize(server, logger)
 				@logger = logger
@@ -319,6 +324,9 @@ module Sfp
 
 					elsif path == '/modules'
 						status, content_type, body = [200, 'application/json', JSON.generate(Sfp::Agent.get_modules)]
+
+					elsif path == '/log'
+						status, content_type, body = [200, 'text/plain', Sfp::Agent.get_log]
 
 					end
 				end

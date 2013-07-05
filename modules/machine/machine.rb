@@ -22,8 +22,8 @@ module Sfp::Module
 			@state["cpus"] = `cat /proc/cpuinfo | grep processor | wc -l`.strip.to_i
 
 			# network configuration
-			@state["hostname"] = `uname -n`.strip
-			@state['address'] = 'ADDR'
+			#@state["hostname"] = `uname -n`.strip
+			#@state['address'] = 'ADDR'
 			
 			#@state["domainname"] = Nuri::Util.domainname
 			#@state["ip_addr"] = Nuri::Util.local_ip

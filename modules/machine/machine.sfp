@@ -1,7 +1,6 @@
 schema Machine {
 	running = false
 	created = true
-	address = ""
 
 	procedure stop {
 		condition { }
