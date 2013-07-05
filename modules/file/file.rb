@@ -8,10 +8,10 @@ module Sfp::Module
 		def update_state
 			path = @model['path'].to_s
 			@state['path'] = path
-			@state['exists'] = ::File.exist?(path)
-			@state['content'] = (@state['exists'] ? ::File.read(path) : '')
+			@state['created'] = ::File.exist?(path)
+			@state['content'] = (@state['created'] ? ::File.read(path) : '')
 
-			if @state['exists']
+			if @state['created']
 				stat = ::File.stat(path)
 				@state['user'] = Etc.getpwuid(stat.uid).name if @model['user'] != ''
 				@state['group'] = Etc.getgrgid(stat.gid).name if @model['group'] != ''

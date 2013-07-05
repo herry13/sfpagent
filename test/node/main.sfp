@@ -1,0 +1,9 @@
+include "node.sfp"
+include "file.sfp"
+
+a isa Node {
+	test isa File {
+		path is "/tmp/test"
+		created is true
+	}
+}

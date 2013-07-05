@@ -5,6 +5,7 @@ require 'openssl'
 require 'thread'
 require 'uri'
 require 'net/http'
+require 'logger'
 
 module Sfp
 	module Agent
@@ -17,6 +18,8 @@ module Sfp
 		                                     WEBrick::BasicLog::ERROR ||
 		                                     WEBrick::BasicLog::FATAL ||
 		                                     WEBrick::BasicLog::WARN)
+
+		@@model_lock = Mutex.new
 
 		# Start the agent.
 		#
@@ -107,13 +110,14 @@ module Sfp
 		#
 		def self.set_model(model)
 			begin
-				@@logger.info "Setting the model [Wait]"
-				File.open(ModelFile, 'w') { |f|
-					f.flock(File::LOCK_EX)
-					f.write(JSON.generate(model))
-					f.flush
-					reload_model
+				@@model_lock.synchronize {
+					@@logger.info "Setting the model [Wait]"
+					File.open(ModelFile, 'w', 0644) { |f|
+						f.write(JSON.generate(model))
+						f.flush
+					}
 				}
+				reload_model
 				@@logger.info "Setting the model [OK]"
 				return true
 			rescue Exception => e
@@ -127,12 +131,13 @@ module Sfp
 		def self.get_model
 			return nil if not File.exist?(ModelFile)
 			begin
-				File.open(ModelFile, 'r') { |f|
-					f.flock(File::LOCK_SH)
-					return JSON[f.read]
+				@@model_lock.synchronize {
+					File.open(ModelFile, 'r') { |f|
+						return JSON[f.read]
+					}
 				}
 			rescue Exception => e
-				@@logger.error "Get the model [Failed] #{e}"
+				@@logger.error "Get the model [Failed] #{e}\n#{e.backtrace}"
 			end
 			false
 		end
@@ -170,12 +175,13 @@ module Sfp
 		# @param action contains the action's schema.
 		#
 		def self.execute_action(action)
+			logger = (p[:daemon] ? @@logger : Logger.new(STDOUT))
 			begin
 				@@runtime.execute_action(action)
-				@@logger.info "Executing #{action['name']} [OK]"
+				logger.info "Executing #{action['name']} [OK]"
 				return true
 			rescue Exception => e
-				@@logger.info "Executing #{action['name']} [Failed] #{e}"
+				logger.info "Executing #{action['name']} [Failed] #{e}"
 			end
 			false
 		end
@@ -189,25 +195,26 @@ module Sfp
 			dir = p[:module_dir].to_s.strip
 			dir.chop! if dir[-1,1] == '/'
 
+			logger = (p[:daemon] ? @@logger : Logger.new(STDOUT))
 			@@modules = []
 			counter = 0
 			if dir != ''
-				@@logger.info "Modules directory: #{dir}"
+				logger.info "Modules directory: #{dir}"
 				Dir.entries(dir).each { |name|
 					next if name == '.' or name == '..' or File.file?("#{dir}/#{name}")
 					module_file = "#{dir}/#{name}/#{name}.rb"
 					next if not File.exist?(module_file)
 					begin
 						require module_file
-						@@logger.info "Loading module #{dir}/#{name} [OK]"
+						logger.info "Loading module #{dir}/#{name} [OK]"
 						counter += 1
 						@@modules << name
 					rescue Exception => e
-						@@logger.warn "Loading module #{dir}/#{name} [Failed]\n#{e}"
+						logger.warn "Loading module #{dir}/#{name} [Failed]\n#{e}"
 					end
 				}
 			end
-			@@logger.info "Successfully loading #{counter} modules."
+			logger.info "Successfully loading #{counter} modules."
 		end
 
 		def self.get_schemata(module_name)
@@ -356,7 +363,7 @@ module Sfp
 
 			def save_pid
 				begin
-					File.open(PIDFile, 'w') { |f| f.write($$.to_s) }
+					File.open(PIDFile, 'w', 0644) { |f| f.write($$.to_s) }
 					return [200, '', $$.to_s]
 				rescue Exception
 				end

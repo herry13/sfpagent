@@ -1,0 +1,19 @@
+schema Machine {
+	running = false
+	created = true
+	address = ""
+
+	procedure start {
+		condition { }
+		effect {
+			this.running = true
+		}
+	}
+
+	procedure stop {
+		condition { }
+		effect {
+			this.running = false
+		}
+	}
+}

@@ -1,6 +1,6 @@
 schema File {
 	path is ""
-	exists is true
+	created is true
 	content is ""
 	user is ""
 	group is ""
@@ -8,7 +8,7 @@ schema File {
 	procedure create (content isref String) {
 		condition { }
 		effect {
-			this.exists is true
+			this.created is true
 			this.content is content
 		}
 	}
@@ -24,7 +24,7 @@ schema File {
 	procedure remove {
 		condition { }
 		effect {
-			this.exists is false
+			this.created is false
 		}
 	}
 }

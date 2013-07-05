@@ -51,6 +51,8 @@ elsif opts[:state]
 	abort "[model-file] is not specified!\nUse \"sfpagent -h\" for more details.\n" if model_file == ''
 	abort "File #{model_file} is not exist!" if not File.exist?(model_file)
 
+	opts[:daemon] = false
+	Sfp::Agent.load_modules(opts)
 	state = Sfp::Runtime.new(parse(model_file)).get_state
 	puts JSON.pretty_generate(state)
 

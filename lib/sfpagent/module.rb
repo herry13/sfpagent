@@ -16,6 +16,9 @@ module Sfp::Resource
 	end
 end
 
+module Sfp::Module
+end
+
 #		class File
 #			include Resource
 #
