@@ -25,6 +25,7 @@ EOS
 	opt :ssl, "Set the agent to use HTTPS instead of HTTP.", :default => false
 	opt :certfile, "Certificate file for HTTPS.", :default => ''
 	opt :keyfile, "Private key file for HTTPS.", :default => ''
+	opt :module_dir, "A directory contains SFP modules.", :default => ''
 end
 
 def parse(filepath)
@@ -39,7 +40,6 @@ plan_file = ARGV[1].to_s
 
 if opts[:start]
 	Sfp::Agent.start(opts)
-#{:daemon => opts[:daemon], :port => opts[:port]})
 
 elsif opts[:stop]
 	Sfp::Agent.stop

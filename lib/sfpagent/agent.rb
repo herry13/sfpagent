@@ -18,7 +18,19 @@ module Sfp
 		                                     WEBrick::BasicLog::FATAL ||
 		                                     WEBrick::BasicLog::WARN)
 
+		# Start the agent.
+		#
+		# options:
+		#	:daemon => true if running as a daemon, false if as a normal application
+		#	:port
+		#	:ssl
+		#	:certfile
+		#	:keyfile
+		#
 		def self.start(p={})
+			p[:module_dir] = File.expand_path(p[:module_dir].to_s)
+			@@config = p
+
 			server_type = (p[:daemon] ? WEBrick::Daemon : WEBrick::SimpleServer)
 			port = (p[:port] ? p[:port] : DefaultPort)
 
@@ -33,6 +45,9 @@ module Sfp
 			end
 
 			begin
+				load_modules(p)
+				reload_model
+
 				server = WEBrick::HTTPServer.new(config)
 				server.mount("/", Sfp::Agent::Handler, @@logger)
 
@@ -47,8 +62,9 @@ module Sfp
 					http.request(req)
 					puts "\nSFP Agent is running with PID #{File.read(PIDFile)}"
 				}
-	
-				reload_model
+
+				trap('INT') { server.shutdown }
+
 				server.start
 			rescue Exception => e
 				@@logger.error "Starting the agent [Failed] #{e}"
@@ -56,6 +72,8 @@ module Sfp
 			end
 		end
 
+		# Stop the agent's daemon.
+		#
 		def self.stop
 			pid = (File.exist?(PIDFile) ? File.read(PIDFile).to_i : nil)
 			if not pid.nil? and `ps hf #{pid}`.strip =~ /.*sfpagent.*/
@@ -69,6 +87,8 @@ module Sfp
 			File.delete(PIDFile) if File.exist?(PIDFile)
 		end
 
+		# Print the status of the agent.
+		#
 		def self.status
 			pid = (File.exist?(PIDFile) ? File.read(PIDFile).to_i : nil)
 			if pid.nil?
@@ -83,6 +103,8 @@ module Sfp
 			end
 		end
 
+		# Save given model to cached file, and then reload the model.
+		#
 		def self.set_model(model)
 			begin
 				@@logger.info "Setting the model [Wait]"
@@ -100,6 +122,8 @@ module Sfp
 			false
 		end
 
+		# Return the model which is read from cached file.
+		#
 		def self.get_model
 			return nil if not File.exist?(ModelFile)
 			begin
@@ -113,6 +137,8 @@ module Sfp
 			false
 		end
 
+		# Reload the model from cached file.
+		#
 		def self.reload_model
 			model = get_model
 			if model.nil?
@@ -127,6 +153,8 @@ module Sfp
 			end
 		end
 
+		# Return the current state of the model.
+		#
 		def self.get_state
 			return nil if !defined? @@runtime or @@runtime.nil?
 			begin
@@ -137,6 +165,10 @@ module Sfp
 			false
 		end
 
+		# Execute an action
+		#
+		# @param action contains the action's schema.
+		#
 		def self.execute_action(action)
 			begin
 				@@runtime.execute_action(action)
@@ -146,6 +178,50 @@ module Sfp
 				@@logger.info "Executing #{action['name']} [Failed] #{e}"
 			end
 			false
+		end
+
+		# Load all modules in given directory.
+		#
+		# options:
+		#	:dir => directory that holds all modules
+		#
+		def self.load_modules(p={})
+			dir = p[:module_dir].to_s.strip
+			dir.chop! if dir[-1,1] == '/'
+
+			@@modules = []
+			counter = 0
+			if dir != ''
+				@@logger.info "Modules directory: #{dir}"
+				Dir.entries(dir).each { |name|
+					next if name == '.' or name == '..' or File.file?("#{dir}/#{name}")
+					module_file = "#{dir}/#{name}/#{name}.rb"
+					next if not File.exist?(module_file)
+					begin
+						require module_file
+						@@logger.info "Loading module #{dir}/#{name} [OK]"
+						counter += 1
+						@@modules << name
+					rescue Exception => e
+						@@logger.warn "Loading module #{dir}/#{name} [Failed]\n#{e}"
+					end
+				}
+			end
+			@@logger.info "Successfully loading #{counter} modules."
+		end
+
+		def self.get_schemata(module_name)
+			dir = @@config[:module_dir].to_s.strip
+			dir.chop! if dir[-1,1] == '/'
+
+			filepath = "#{dir}/#{module_name}/#{module_name}.sfp"
+			sfp = parse(filepath).root
+			sfp.accept(Sfp::Visitor::ParentEliminator.new)
+			JSON.generate(sfp)
+		end
+
+		def self.get_modules
+			(defined?(@@modules) and @@modules.is_a?(Array) ? @@modules : [])
 		end
 
 		class Handler < WEBrick::HTTPServlet::AbstractServlet
@@ -158,24 +234,39 @@ module Sfp
 				JSON[query['json']]
 			end
 
+			# Process HTTP Get request
+			#
+			# uri:
+			#	/pid => save daemon's PID to a file
+			#	/state => return the current state
+			#	/model => return the current model
+			#	/schemata => return the schemata of a module
+			#	/modules => return a list of available modules
+			#
 			def do_GET(request, response)
-				status = 404
+				status = 400
 				content_type, body = ''
 				if not trusted(request.peeraddr[2])
 					status = 403
 				else
-					path = (request.path[-1,1] == '/' ? ryyequest.path.chop : request.path)
+					path = (request.path[-1,1] == '/' ? request.path.chop : request.path)
 					if path == '/pid' and request.peeraddr[2] == 'localhost'
 						status, content_type, body = save_pid
 
 					elsif path == '/state'
 						status, content_type, body = get_state
 
-					elsif path[0,7] == '/state/'
+					elsif path =~ /^\/state\/.+/
 						status, content_type, body = get_state({:path => path[7, path.length-7]})
 
 					elsif path == '/model'
 						status, content_type, body = get_model
+
+					elsif path =~ /^\/schemata\/.+/
+						status, content_type, body = get_schemata({:module => path[10, path.length-10]})
+
+					elsif path == '/modules'
+						status, content_type, body = [200, 'application/json', JSON.generate(Sfp::Agent.get_modules)]
 
 					end
 				end
@@ -185,8 +276,14 @@ module Sfp
 				response.body = body
 			end
 
+			# Handle HTTP Post request
+			#
+			# uri:
+			#	/model => receive a new model and save to cached file
+			#	/execute => receive an action's schema and execute it
+			#
 			def do_POST(request, response)
-				status = 404
+				status = 400
 				content_type, body = ''
 				if not self.trusted(request.peeraddr[2])
 					status = 403
@@ -206,13 +303,26 @@ module Sfp
 				response.body = body
 			end
 
+			def get_schemata(p={})
+				begin
+					module_name, _ = p[:module].split('/', 2)
+					return [200, 'application/json', Sfp::Agent.get_schemata(module_name)]
+				rescue Exception => e
+					@logger.error "Sending schemata [Failed]\n#{e}"
+				end
+				[500, '', '']
+			end
+
 			def get_state(p={})
 				state = Sfp::Agent.get_state
 
 				# The model is not exist.
 				return [404, 'text/plain', 'There is no model!'] if state.nil?
 
-				return [200, 'application/json', JSON.generate(state)] if !!state
+				if !!state
+					state = state.at?("$." + p[:path].gsub(/\//, '.')) if !!p[:path]
+					return [200, 'application/json', JSON.generate({'state'=>state})]
+				end
 
 				# There is an error when retrieving the state of the model!
 				[500, '', '']
@@ -247,7 +357,7 @@ module Sfp
 			def save_pid
 				begin
 					File.open(PIDFile, 'w') { |f| f.write($$.to_s) }
-					return [200, '', '']
+					return [200, '', $$.to_s]
 				rescue Exception
 				end
 				[500, '', '']
