@@ -92,6 +92,31 @@ module Sfp
 			state
 		end
 
+		def execute_plan(plan)
+			plan = JSON[plan]
+			if plan['type'] == 'sequential'
+				execute_sequential_plan(plan)
+			else
+				raise Exception, "Not implemented yet!"
+			end
+		end
+
+		private
+		def execute_sequential_plan(plan)
+			puts 'Execute a sequential plan...'
+
+			plan['workflow'].each_index { |index|
+				action = plan['workflow'][index]
+				print "#{index+1}) #{action['name']} "
+				if not execute_action(action)
+					puts '[Failed]'
+					return false
+				end
+				puts '[OK]'
+			}
+			true
+		end
+
 
 =begin
 		def execute(plan)

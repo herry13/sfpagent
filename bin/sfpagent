@@ -6,10 +6,10 @@ require "#{libdir}/../lib/sfpagent"
 opts = Trollop::options do
 	version "sfpagent 0.0.1 (c) 2013 Herry"
 	banner <<-EOS
-SFP Agent that provides a Ruby framework for managing system configurations.
+SFP Agent that provides a Ruby framework for managing system configurations. The configurations are modelled in SFP language.
 
 Usage:
-       sfpagent [options] [model-file]
+       sfpagent [options] [model-file] [plan-file]
 
 where [options] are:
 EOS
@@ -17,8 +17,9 @@ EOS
 	opt :start, "Start the daemon agent."
 	opt :stop, "Stop the daemon agent."
 	opt :status, "Print the status of the daemon agent."
-	opt :state, "Load the runtime modules and then print their states in JSON. [model-file] shoud be specified."
-	opt :execute, "Execute a plan in given file."
+	opt :state, "Given a model, print the state of all modules. (Note: [model-file] should be specified.)"
+	opt :execute, "Given a model, execute a plan in given file. (Note: [model-file] should be specified.)"
+	opt :pretty, "Print the result in a pretty JSON format."
 end
 
 def parse(filepath)
@@ -28,7 +29,8 @@ def parse(filepath)
 	parser
 end
 
-filepath = ARGV[0].to_s
+model_file = ARGV[0].to_s
+plan_file = ARGV[1].to_s
 
 if opts[:start]
 	Sfp::Agent.start
@@ -40,15 +42,21 @@ elsif opts[:status]
 	Sfp::Agent.status
 
 elsif opts[:state]
-	abort "[model-file] is not specified!\nUse \"sfpagent -h\" for more details.\n" if filepath == ''
+	abort "[model-file] is not specified!\nUse \"sfpagent -h\" for more details.\n" if model_file == ''
+	abort "File #{model_file} is not exist!" if not File.exist?(model_file)
 
-	state = Sfp::Runtime.new(parse(filepath)).get_state
+	state = Sfp::Runtime.new(parse(model_file)).get_state
 	puts JSON.pretty_generate(state)
 
 elsif opts[:execute]
-	abort "[model-file] is not specified!\nUse \"sfpagent -h\" for more details.\n" if filepath == ''
+	abort "[model-file] is not specified!\nUse \"sfpagent -h\" for more details.\n" if model_file == ''
+	abort "[plan-file] is not specified!\nUse \"sfpagent -h\" for more details.\n" if plan_file == ''
+	abort "File #{model_file} is not exist!" if not File.exist?(model_file)
+	abort "File #{plan_file} is not exist!" if not File.exist?(plan_file)
 
-	abort "Not yet implemented!"
+	runtime = Sfp::Runtime.new(parse(model_file))
+	runtime.get_state
+	puts (runtime.execute_plan(File.read(plan_file)) ? "Success!" : "Failed!")
 
 else
 	Trollop::help
