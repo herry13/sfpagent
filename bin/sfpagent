@@ -25,7 +25,7 @@ EOS
 	opt :ssl, "Set the agent to use HTTPS instead of HTTP.", :default => false
 	opt :certfile, "Certificate file for HTTPS.", :default => ''
 	opt :keyfile, "Private key file for HTTPS.", :default => ''
-	opt :module_dir, "A directory contains SFP modules.", :default => ''
+	opt :modules_dir, "A directory that holds all SFP modules.", :default => ''
 end
 
 def parse(filepath)

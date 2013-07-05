@@ -31,8 +31,8 @@ module Sfp
 		#	:keyfile
 		#
 		def self.start(p={})
-			p[:module_dir] = File.expand_path(p[:module_dir].to_s).to_s.strip
-			p[:module_dir].chop! if p[:module_dir][-1,1] == '/'
+			p[:modules_dir] = File.expand_path(p[:modules_dir].to_s).to_s.strip
+			p[:modules_dir].chop! if p[:modules_dir][-1,1] == '/'
 
 			@@config = p
 
@@ -194,7 +194,7 @@ module Sfp
 		#	:dir => directory that holds all modules
 		#
 		def self.load_modules(p={})
-			dir = p[:module_dir]
+			dir = p[:modules_dir]
 
 			logger = (p[:daemon] ? @@logger : Logger.new(STDOUT))
 			@@modules = []
@@ -219,7 +219,7 @@ module Sfp
 		end
 
 		def self.get_schemata(module_name)
-			dir = @@config[:module_dir]
+			dir = @@config[:modules_dir]
 
 			filepath = "#{dir}/#{module_name}/#{module_name}.sfp"
 			sfp = parse(filepath).root
@@ -231,17 +231,30 @@ module Sfp
 			(defined?(@@modules) and @@modules.is_a?(Array) ? @@modules : [])
 		end
 
-		def self.install_module(name, data)
-			#return false if not get_modules.rindex(name).nil?
-			return false if @@config[:module_dir] == ''
+		def self.delete_module(name)
+			return false if @@config[:modules_dir] == ''
+			
+			module_dir = "#{@@config[:modules_dir]}/#{name}"
+			if File.directory?(module_dir)
+				result = !!system("rm -rf #{module_dir}")
+			else
+				result = true
+			end
+			load_modules(@@config)
+			@@logger.info "Deleting module #{name} " + (result ? "[OK]" : "[Failed]")
+			result
+		end
 
-			if !File.directory? @@config[:module_dir]
-				File.delete @@config[:module_dir] if File.exist? @@config[:module_dir]
-				Dir.mkdir(@@config[:module_dir], 0700)
+		def self.install_module(name, data)
+			return false if @@config[:modules_dir] == ''
+
+			if !File.directory? @@config[:modules_dir]
+				File.delete @@config[:modules_dir] if File.exist? @@config[:modules_dir]
+				Dir.mkdir(@@config[:modules_dir], 0700)
 			end
 
 			# delete old files
-			module_dir = "#{@@config[:module_dir]}/#{name}"
+			module_dir = "#{@@config[:modules_dir]}/#{name}"
 			system("rm -rf #{module_dir}") if File.exist? module_dir
 
 			# save the archive
@@ -258,7 +271,6 @@ module Sfp
 				system("cd #{module_dir}; rm data.tgz")
 			}
 			load_modules(@@config)
-
 			@@logger.info "Installing module #{name} [OK]"
 
 			true
@@ -354,8 +366,8 @@ module Sfp
 						status, content_type, body = self.set_model({:model => query_to_json(request.query)})
 
 					elsif path =~ /\/modules\/.+/
-						status, content_type, body = self.install_module({:name => path[9, path.length-9],
-						                                                  :query => request.query})
+						status, content_type, body = self.manage_module({:name => path[9, path.length-9],
+						                                                 :query => request.query})
 					end
 				end
 
@@ -364,9 +376,13 @@ module Sfp
 				response.body = body
 			end
 
-			def install_module(p={})
+			def manage_module(p={})
 				p[:name], _ = p[:name].split('/', 2)
-				return [200, '', ''] if Sfp::Agent.install_module(p[:name], p[:query]['data'])
+				if p[:query].has_key?('data')
+					return [200, '', ''] if Sfp::Agent.install_module(p[:name], p[:query]['data'])
+				else
+					return [200, '', ''] if Sfp::Agent.delete_module(p[:name])
+				end
 				[500, '', '']
 			end
 
