@@ -1,0 +1,4 @@
+schema Node {
+	sfpAddress is ""
+	sfpPort is "1314"
+}

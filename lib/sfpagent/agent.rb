@@ -31,7 +31,9 @@ module Sfp
 		#	:keyfile
 		#
 		def self.start(p={})
-			p[:module_dir] = File.expand_path(p[:module_dir].to_s)
+			p[:module_dir] = File.expand_path(p[:module_dir].to_s).to_s.strip
+			p[:module_dir].chop! if p[:module_dir][-1,1] == '/'
+
 			@@config = p
 
 			server_type = (p[:daemon] ? WEBrick::Daemon : WEBrick::SimpleServer)
@@ -192,8 +194,7 @@ module Sfp
 		#	:dir => directory that holds all modules
 		#
 		def self.load_modules(p={})
-			dir = p[:module_dir].to_s.strip
-			dir.chop! if dir[-1,1] == '/'
+			dir = p[:module_dir]
 
 			logger = (p[:daemon] ? @@logger : Logger.new(STDOUT))
 			@@modules = []
@@ -218,8 +219,7 @@ module Sfp
 		end
 
 		def self.get_schemata(module_name)
-			dir = @@config[:module_dir].to_s.strip
-			dir.chop! if dir[-1,1] == '/'
+			dir = @@config[:module_dir]
 
 			filepath = "#{dir}/#{module_name}/#{module_name}.sfp"
 			sfp = parse(filepath).root
@@ -229,6 +229,27 @@ module Sfp
 
 		def self.get_modules
 			(defined?(@@modules) and @@modules.is_a?(Array) ? @@modules : [])
+		end
+
+		def self.install_module(name, data)
+			return false if not get_modules.rindex(name).nil?
+			return false if @@config[:module_dir] == ''
+
+			# save the archive
+			Dir.mkdir("#{@@config[:module_dir]}/#{name}", 0700)
+			dir = "#{@@config[:module_dir]}/#{name}"
+			File.open("#{dir}/data.tgz", 'wb', 0600) { |f| f.syswrite data }
+
+			# extract the archive and the files
+			system("cd #{dir}; tar xvf #{dir}/data.tgz")
+			Dir.entries(dir).each { |name|
+				next if name == '.' or name == '..'
+				if File.directory? "#{dir}/#{name}"
+					system("cd #{dir}/#{name}; mv * ..; cd ..; rmdir #{name}; rm data.tgz")
+				end
+			}
+			load_modules(@@config)
+			true
 		end
 
 		class Handler < WEBrick::HTTPServlet::AbstractServlet
@@ -302,12 +323,22 @@ module Sfp
 					elsif path == '/execute'
 						status, content_type, body = self.execute({:action => query_to_json(request.query)})
 
+					elsif path =~ /\/modules\/.+/
+						status, content_type, body = self.install_module({:name => path[9, path.length-9],
+						                                                  :query => request.query})
+
 					end
 				end
 
 				response.status = status
 				response['Content-Type'] = content_type
 				response.body = body
+			end
+
+			def install_module(p={})
+				p[:name], _ = p[:name].split('/', 2)
+				return [200, '', ''] if Sfp::Agent.install_module(p[:name], p[:query]['data'])
+				[500, '', '']
 			end
 
 			def get_schemata(p={})
