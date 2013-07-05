@@ -1,11 +1,14 @@
 require 'rubygems'
 require 'webrick'
+require 'webrick/https'
+require 'openssl'
 require 'thread'
 require 'uri'
 require 'net/http'
 
 module Sfp
 	module Agent
+		DefaultPort = 1314
 		PIDFile = '/tmp/sfpagent.pid'
 		LogFile = '/tmp/sfpagent.log'
 		ModelFile = '/tmp/sfpagent.model'
@@ -15,24 +18,42 @@ module Sfp
 		                                     WEBrick::BasicLog::FATAL ||
 		                                     WEBrick::BasicLog::WARN)
 
-		def self.start
-			server_type = WEBrick::Daemon
-			config = {:Host => '0.0.0.0', :Port => '1314', :ServerType => server_type,
+		def self.start(p={})
+			server_type = (p[:daemon] ? WEBrick::Daemon : WEBrick::SimpleServer)
+			port = (p[:port] ? p[:port] : DefaultPort)
+
+			config = {:Host => '0.0.0.0', :Port => port, :ServerType => server_type,
 			          :Logger => @@logger}
-			server = WEBrick::HTTPServer.new(config)
-			server.mount("/", Sfp::Agent::Handler, @@logger)
+			if p[:ssl]
+				config[:SSLEnable] = true
+				config[:SSLVerifyClient] = OpenSSL::SSL::VERIFY_NONE
+				config[:SSLCertificate] = OpenSSL::X509::Certificate.new(File.open(p[:certfile]).read)
+				config[:SSLPrivateKey] = OpenSSL::PKey::RSA.new(File.open(p[:keyfile]).read)
+				config[:SSLCertName] = [["CN", WEBrick::Utils::getservername]]
+			end
 
-			fork {
-				# send request to save PID
-				sleep 2
-				url = URI.parse("http://localhost:#{config[:Port]}/pid")
-				req = Net::HTTP::Get.new(url.path)
-				Net::HTTP.start(url.host, url.port) { |http| http.request(req) }
-				puts "\nSFP Agent is running with PID #{File.read(PIDFile)}"
-			}
+			begin
+				server = WEBrick::HTTPServer.new(config)
+				server.mount("/", Sfp::Agent::Handler, @@logger)
 
-			reload_model
-			server.start
+				fork {
+					# send request to save PID
+					sleep 2
+					url = URI.parse("http://localhost:#{config[:Port]}/pid")
+					http = Net::HTTP.new(url.host, url.port)
+					http.use_ssl = p[:ssl]
+					http.verify_mode = OpenSSL::SSL::VERIFY_NONE
+					req = Net::HTTP::Get.new(url.path)
+					http.request(req)
+					puts "\nSFP Agent is running with PID #{File.read(PIDFile)}"
+				}
+	
+				reload_model
+				server.start
+			rescue Exception => e
+				@@logger.error "Starting the agent [Failed] #{e}"
+				raise e
+			end
 		end
 
 		def self.stop
