@@ -206,7 +206,7 @@ module Sfp
 					module_file = "#{dir}/#{name}/#{name}.rb"
 					next if not File.exist?(module_file)
 					begin
-						require module_file
+						load module_file #require module_file
 						logger.info "Loading module #{dir}/#{name} [OK]"
 						counter += 1
 						@@modules << name
@@ -258,6 +258,9 @@ module Sfp
 				system("cd #{module_dir}; rm data.tgz")
 			}
 			load_modules(@@config)
+
+			@@logger.info "Installing module #{name} [OK]"
+
 			true
 		end
 

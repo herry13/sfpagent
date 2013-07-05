@@ -23,7 +23,7 @@ module Sfp::Module
 
 			# network configuration
 			@state["hostname"] = `uname -n`.strip
-			@state['address'] = 'TODO'
+			@state['address'] = ''
 			
 			#@state["domainname"] = Nuri::Util.domainname
 			#@state["ip_addr"] = Nuri::Util.local_ip
