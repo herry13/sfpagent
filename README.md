@@ -1,5 +1,5 @@
-SFP Planner for Ruby
-====================
+SFP Agent for Ruby
+==================
 - Author: Herry (herry13@gmail.com)
 - Version: 0.0.1
 - License: [BSD License](https://github.com/herry13/sfp-ruby/blob/master/LICENSE)
