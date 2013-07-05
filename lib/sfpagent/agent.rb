@@ -199,7 +199,7 @@ module Sfp
 			logger = (p[:daemon] ? @@logger : Logger.new(STDOUT))
 			@@modules = []
 			counter = 0
-			if dir != ''
+			if dir != '' and File.exist?(dir)
 				logger.info "Modules directory: #{dir}"
 				Dir.entries(dir).each { |name|
 					next if name == '.' or name == '..' or File.file?("#{dir}/#{name}")
@@ -234,6 +234,11 @@ module Sfp
 		def self.install_module(name, data)
 			return false if not get_modules.rindex(name).nil?
 			return false if @@config[:module_dir] == ''
+
+			if !File.directory? @@config[:module_dir]
+				File.delete @@config[:module_dir] if File.exist? @@config[:module_dir]
+				Dir.mkdir(@@config[:module_dir], 0700)
+			end
 
 			# save the archive
 			Dir.mkdir("#{@@config[:module_dir]}/#{name}", 0700)

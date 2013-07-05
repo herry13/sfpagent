@@ -3,13 +3,6 @@ schema Machine {
 	created = true
 	address = ""
 
-	procedure start {
-		condition { }
-		effect {
-			this.running = true
-		}
-	}
-
 	procedure stop {
 		condition { }
 		effect {

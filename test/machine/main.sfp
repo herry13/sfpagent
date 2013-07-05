@@ -1,0 +1,6 @@
+include "node.sfp"
+include "machine.sfp"
+
+nena isa Node {
+	machine isa Machine
+}
