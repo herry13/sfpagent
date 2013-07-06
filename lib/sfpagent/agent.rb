@@ -459,4 +459,11 @@ module Sfp
 			end
 		end
 	end
+
+	def self.require(gem, pack=nil)
+		require gem
+	rescue LoadError => e
+		system("gem install #{pack||gem} --no-ri --no-rdoc")
+		require gem
+	end
 end

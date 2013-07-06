@@ -1,0 +1,5 @@
+include "cloud.sfp"
+
+x isa Cloud {
+	description = "Cloud X"
+}
