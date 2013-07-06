@@ -9,10 +9,17 @@ require 'logger'
 
 module Sfp
 	module Agent
+		if Process.euid == 0
+			CachedDir = '/var/sfpagent'
+		else
+			CachedDir = File.expand_path('~/.sfpagent')
+		end
+		system("mkdir #{CachedDir}") if not File.exist?(CachedDir)
+
 		DefaultPort = 1314
-		PIDFile = '/tmp/sfpagent.pid'
-		LogFile = '/tmp/sfpagent.log'
-		ModelFile = '/tmp/sfpagent.model'
+		PIDFile = "#{CachedDir}/sfpagent.pid"
+		LogFile = "#{CachedDir}/sfpagent.log"
+		ModelFile = "#{CachedDir}/sfpagent.model"
 
 		@@logger = WEBrick::Log.new(LogFile, WEBrick::BasicLog::INFO ||
 		                                     WEBrick::BasicLog::ERROR ||
@@ -31,8 +38,11 @@ module Sfp
 		#	:keyfile
 		#
 		def self.start(p={})
-			p[:modules_dir] = File.expand_path(p[:modules_dir].to_s).to_s.strip
+			# check modules directory, and create it if it's not exist
+			p[:modules_dir] = "#{CachedDir}/modules" if p[:modules_dir].to_s.strip == ''
+			p[:modules_dir] = File.expand_path(p[:modules_dir].to_s)
 			p[:modules_dir].chop! if p[:modules_dir][-1,1] == '/'
+			Dir.mkdir(p[:modules_dir], 0700) if not File.exists?(p[:modules_dir])
 
 			@@config = p
 
@@ -371,7 +381,8 @@ module Sfp
 					path = (request.path[-1,1] == '/' ? ryyequest.path.chop : request.path)
 
 					if path == '/model'
-						status, content_type, body = self.set_model({:model => query_to_json(request.query)})
+						status, content_type, body = self.set_model({:query => request.query})
+# :model => query_to_json(request.query)})
 
 					elsif path =~ /\/modules\/.+/
 						status, content_type, body = self.manage_module({:name => path[9, path.length-9],
@@ -386,8 +397,8 @@ module Sfp
 
 			def manage_module(p={})
 				p[:name], _ = p[:name].split('/', 2)
-				if p[:query].has_key?('data')
-					return [200, '', ''] if Sfp::Agent.install_module(p[:name], p[:query]['data'])
+				if p[:query].has_key?('module')
+					return [200, '', ''] if Sfp::Agent.install_module(p[:name], p[:query]['module'])
 				else
 					return [200, '', ''] if Sfp::Agent.delete_module(p[:name])
 				end
@@ -420,8 +431,13 @@ module Sfp
 			end
 
 			def set_model(p={})
-				# Setting the model was success, and then return '200' status.
-				return [200, '', ''] if Sfp::Agent.set_model(p[:model])
+				if p[:query].has_key?('model')
+					# Setting the model was success, and then return '200' status.
+					return [200, '', ''] if Sfp::Agent.set_model(JSON[p[:query]['model']])
+				else
+					# Remove the existing model by setting an empty model
+					return [200, '', ''] if Sfp::Agent.set_model({})
+				end
 
 				# There is an error on setting the model!
 				[500, '', '']
