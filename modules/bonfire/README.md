@@ -1,4 +1,12 @@
 BonFIRE Module
 ==============
 
-You need to put "bonfire.pem" inside module's directory. It is a private key to access your BonFIRE account.
+Required Gems
+-------------
+- restfully
+- restfully-addons
+
+Additional Files
+----------------
+- bonfire.pem : A private key file to access your BonFIRE account. This file should be put in module's directory.
+- config.yml : The username and password of your BonFIRE account should be defined here.
