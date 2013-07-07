@@ -1,74 +1,75 @@
-require 'rubygems'
-require 'thread'
-require 'json'
+#Sfp.require 'fog'
+require 'fog'
 
-require File.expand_path(File.dirname(__FILE__)) + '/helper.rb'
-
-module Sfp::Module
-	class HPCloud
-		include Sfp::Resource
-		include Sfp::Module::HPCloudHelper
-
-		def initialize
+module Sfp::Module::HPCloudHelper
+	protected
+	def open_connection
+		begin
+			config = self.read_config
+			@conn = Fog::Compute.new(:provider => "HP",
+			                         :hp_access_key => config['access_key'],
+			                         :hp_auth_uri => config['auth_uri'],
+			                         :hp_tenant_id => config['tenant_id'],
+			                         :hp_secret_key => config['secret_key'],
+		   	                         :hp_avl_zone => config['zone'])
+		rescue Exception => exp
+			puts "#{exp}\n" + exp.backtrace.join("\n")
 			@conn = nil
+			return false
 		end
+		return true
+	end
 
-		def update_state
-			@state['running'] = open_connection
-			@state['description'] = @model['description']
-		end
+	def read_config
+		config_file = ::File.expand_path(::File.dirname(__FILE__)) + "/config.sfp"
+		return {} if not ::File.exist?(config_file)
+		return Sfp::Parser.parse_file(config_file)['config']
+	end
 
-		def create_vm(p={})
-			# TODO
-			false
-		end
+	def get_info(name)
+		self.open_connection if @conn.nil?
+		return nil if @conn.nil?
+		servers = @conn.servers
+		servers.each { |s| return s if s.name == name }
+		nil
+	end
 
-		def delete_vm(p={})
-			helper_delete_vm(p)
-		end
+	def helper_delete_vm(params={})
+		self.open_connection if @conn.nil?
+		return false if @conn.nil?
+
+		name = params['vm']
+		name = name[2, name.length-2] if name[0,2] == '$.'
+
+		# delete if VM with given name exists
+		@conn.servers.each { |s|
+			if s.name == name
+				@conn.delete_server(s.id)
+				# wait until the VM is completely deleted
+				counter = 120
+				info = self.get_info(name)
+				while not info.nil? and counter > 0
+					counter -= 1
+					sleep 1
+					info = self.get_info(name)
+				end
+				break
+			end
+		}
+
+		# update system information
+		#system = Nuri::Util.get_system_information
+		#system[name] = nil
+		#Nuri::Util.set_system_information(system)
+		# broadcast system information
+		#Nuri::Util.broadcast_system_information
+
+		#return [true, JSON.generate({"update_system" => true})]
+		true
 	end
 end
 
 =begin
-			include Nuri::Resource
-
-			attr_accessor :auth_uri
-
-			def initialize(options={})
-				# registering the component
-				#self.register('Cloud', 'hpcloud')
-				@mutex = Mutex.new
-
-				self.register('HPCloud', 'hpcloud')
-			end
-
-			def update_state
-				self.reset
-				config = self.read_config
-
-				@state['description'] = (config.has_key?('description') ? config['description'] : '')
-				@state['running'] = self.open_connection
-				@state['vms'] = {}
-				self.get_vms.each_key { |name| @state['vms'][name] = true }
-			end
-
-			def open_connection
-				begin
-					config = self.read_config
-					@conn = Fog::Compute.new(:provider => "HP",
-					                         :hp_access_key => config['access_key'],
-					                         :hp_auth_uri => config['auth_uri'],
-					                         :hp_tenant_id => config['tenant_id'],
-					                         :hp_secret_key => config['secret_key'],
-				   	                      :hp_avl_zone => config['zone'])
-				rescue Exception => exp
-					Nuri::Util.warn "Cannot open connection to cloud's end point: #{@name}"
-					@conn = nil
-					return false
-				end
-				return true
-			end
-
 			def get_vm_address(params={})
 				return self.get_address(:name => params['name'])
 			end

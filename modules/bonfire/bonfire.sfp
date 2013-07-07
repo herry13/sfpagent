@@ -1,0 +1,21 @@
+include "../cloud/cloud.sfp"
+
+schema Bonfire extends Cloud {
+	gateway is "ssh.bonfire.grid5000.fr"
+	experiment is ""
+	location is ""
+	description is "BonFIRE Cloud Compute"
+	image_name is ""
+	wan_name is ""
+	servers { }
+
+	sub create_vm {
+		condition {}
+		effect {}
+	}
+
+	sub delete_vm {
+		condition {}
+		effect {}
+	}
+}

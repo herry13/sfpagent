@@ -1,0 +1,19 @@
+config {
+	description = "HPCloud Zone 1"
+
+	// master node's address
+	master_node = ""
+
+	// HPCloud account information
+	access_key = ""
+	secret_key = ""
+	auth_uri = "https://region-a.geo-1.identity.hpcloudsvc.com:35357/v2.0/"
+	tenant_id = ""
+	zone = "az-1.region-a.geo-1"
+
+	// Default properties of the VM
+	default_flavor_id = 100
+	default_image_id = 75845
+	default_ssh_key_name = ""
+	default_ssh_username = ""
+}

@@ -52,6 +52,7 @@ elsif opts[:state]
 	abort "File #{model_file} is not exist!" if not File.exist?(model_file)
 
 	opts[:daemon] = false
+	opts = Sfp::Agent.check_config(opts)
 	Sfp::Agent.load_modules(opts)
 	state = Sfp::Runtime.new(parse(model_file)).get_state
 	puts JSON.pretty_generate(state)
@@ -62,6 +63,9 @@ elsif opts[:execute]
 	abort "File #{model_file} is not exist!" if not File.exist?(model_file)
 	abort "File #{plan_file} is not exist!" if not File.exist?(plan_file)
 
+	opts[:daemon] = false
+	opts = Sfp::Agent.check_config(opts)
+	Sfp::Agent.load_modules(opts)
 	runtime = Sfp::Runtime.new(parse(model_file))
 	runtime.get_state
 	puts (runtime.execute_plan(File.read(plan_file)) ? "Success!" : "Failed!")

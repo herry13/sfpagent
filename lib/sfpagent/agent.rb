@@ -28,6 +28,19 @@ module Sfp
 
 		@@model_lock = Mutex.new
 
+		def self.logger
+			@@logger
+		end
+
+		def self.check_config(p={})
+			# check modules directory, and create it if it's not exist
+			p[:modules_dir] = "#{CachedDir}/modules" if p[:modules_dir].to_s.strip == ''
+			p[:modules_dir] = File.expand_path(p[:modules_dir].to_s)
+			p[:modules_dir].chop! if p[:modules_dir][-1,1] == '/'
+			Dir.mkdir(p[:modules_dir], 0700) if not File.exists?(p[:modules_dir])
+			p
+		end
+
 		# Start the agent.
 		#
 		# options:
@@ -38,13 +51,7 @@ module Sfp
 		#	:keyfile
 		#
 		def self.start(p={})
-			# check modules directory, and create it if it's not exist
-			p[:modules_dir] = "#{CachedDir}/modules" if p[:modules_dir].to_s.strip == ''
-			p[:modules_dir] = File.expand_path(p[:modules_dir].to_s)
-			p[:modules_dir].chop! if p[:modules_dir][-1,1] == '/'
-			Dir.mkdir(p[:modules_dir], 0700) if not File.exists?(p[:modules_dir])
-
-			@@config = p
+			@@config = p = check_config(p)
 
 			server_type = (p[:daemon] ? WEBrick::Daemon : WEBrick::SimpleServer)
 			port = (p[:port] ? p[:port] : DefaultPort)
@@ -382,7 +389,6 @@ module Sfp
 
 					if path == '/model'
 						status, content_type, body = self.set_model({:query => request.query})
-# :model => query_to_json(request.query)})
 
 					elsif path =~ /\/modules\/.+/
 						status, content_type, body = self.manage_module({:name => path[9, path.length-9],
@@ -477,9 +483,9 @@ module Sfp
 	end
 
 	def self.require(gem, pack=nil)
-		require gem
+		Kernel.require gem
 	rescue LoadError => e
 		system("gem install #{pack||gem} --no-ri --no-rdoc")
-		require gem
+		Kernel.require gem
 	end
 end

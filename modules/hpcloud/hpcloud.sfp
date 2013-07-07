@@ -1,2 +1,4 @@
+include "../cloud/cloud.sfp"
+
 schema HPCloud extends Cloud {
 }
