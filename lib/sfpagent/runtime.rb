@@ -89,8 +89,9 @@ class Sfp::Runtime
 			[modules, state]
 		end
 
-		@root.accept(Sfp::Visitor::ParentEliminator.new)
-		@modules, state = get_object_state(@root, @root, sfp)
+		root = Sfp::Helper.deep_clone(@root)
+		root.accept(Sfp::Visitor::ParentEliminator.new)
+		@modules, state = get_object_state(root, root, sfp)
 
 		state
 	end
