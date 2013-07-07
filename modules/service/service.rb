@@ -23,15 +23,15 @@ class Sfp::Module::Service < Sfp::Module::Package
 		service = @model['service_name'].to_s.strip
 		return false if service.length <= 0
 		return true if Sfp::Module::Service.running?(service)
-		cmd = "/usr/bin/sudo #{ServiceCommand} #{service} start"
-		return (system(cmd) == true)
+		result = `sudo #{ServiceCommand} #{service} start`.to_s
+		return (result =~ /.*running.*/) # (system(cmd) == true)
 	end
 
 	def stop(p={})
 		service = @model['service_name'].to_s.strip
 		return false if service.length <= 0
 		return true if not Sfp::Module::Service.running?(service)
-		cmd = "/usr/bin/sudo #{ServiceCommand} #{service} stop"
-		return (system(cmd) == true)
+		result = `sudo #{ServiceCommand} #{service} stop`.to_s
+		return (result =~ /.*stop.*/) # (system(cmd) == true)
 	end
 end
