@@ -194,7 +194,7 @@ module Sfp
 		# @param action contains the action's schema.
 		#
 		def self.execute_action(action)
-			logger = (p[:daemon] ? @@logger : Logger.new(STDOUT))
+			logger = (@@config[:daemon] ? @@logger : Logger.new(STDOUT))
 			begin
 				@@runtime.execute_action(action)
 				logger.info "Executing #{action['name']} [OK]"
