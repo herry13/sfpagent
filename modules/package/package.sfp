@@ -1,0 +1,23 @@
+schema Package {
+	package_name = ""
+	installed = false
+	version = ""
+
+	sub install {
+		condition {
+			installed = false
+		}
+		effect {
+			installed = true
+		}
+	}
+
+	sub uninstall {
+		condition {
+			installed = true
+		}
+		effect {
+			installed = false
+		}
+	}
+}

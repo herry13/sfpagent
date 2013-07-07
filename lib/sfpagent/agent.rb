@@ -196,11 +196,11 @@ module Sfp
 		def self.execute_action(action)
 			logger = (@@config[:daemon] ? @@logger : Logger.new(STDOUT))
 			begin
-				@@runtime.execute_action(action)
-				logger.info "Executing #{action['name']} [OK]"
-				return true
+				result = @@runtime.execute_action(action)
+				logger.info "Executing #{action['name']} " + (result ? "[OK]" : "[Failed]")
+				return result
 			rescue Exception => e
-				logger.info "Executing #{action['name']} [Failed] #{e}"
+				logger.info "Executing #{action['name']} [Failed] #{e}\n#{e.backtrace.join("\n")}"
 			end
 			false
 		end
