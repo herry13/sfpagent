@@ -6,7 +6,7 @@ class Sfp::Module::Apache < Sfp::Module::Service
 	include Sfp::Resource
 
 	ConfigFile = '/etc/apache2/sites-available/default'
-	InstallLockFile = '/tmp/sfp_apache_installing.lock'
+	InstallingLockFile = '/tmp/sfp_apache_installing.lock'
 	NotRunningLockFile = '/tmp/sfp_apache_not_running.lock'
 
 	def init2
@@ -24,13 +24,13 @@ class Sfp::Module::Apache < Sfp::Module::Service
 		@state['php_module'] = Sfp::Module::Package.installed?('libapache2-mod-php5')
 		@state['php_mysql_module'] = Sfp::Module::Package.installed?('php5-mysql')
 
-		if File.exist?(InstallLockFile)
+		if File.exist?(InstallingLockFile)
 			@state['installed'] = @state['running'] = false
 			@state['version'] = ''
 		else
 			@state['installed'] = Sfp::Module::Package.installed?('apache2')
 			@state['running'] = (File.exist?(NotRunningLockFile) ? false : Sfp::Module::Service.running?('apache2'))
-			@state['version'] = Sfp::Module::Package.version?('apache2')
+			@state['version'] = Sfp::Module::Package.version?('apache2').to_s
 		end
 
 		# port

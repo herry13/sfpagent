@@ -28,8 +28,8 @@ schema Apache extends Service {
 
 	sub install {
 		condition {
+			//this.libaugeas.installed = true
 			this.installed = false
-			this.libaugeas.installed = true
 		}
 		effect {
 			this.installed = true
