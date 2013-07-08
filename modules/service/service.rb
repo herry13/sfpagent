@@ -1,7 +1,8 @@
 require File.expand_path(File.dirname(__FILE__)) + "/../package/package.rb"
 
 class Sfp::Module::Service < Sfp::Module::Package
-	ServiceCommand = (File.exist?('/usr/bin/service') ? '/usr/bin/service' : '/sbin/service')
+	ServiceCommand = (File.exist?('/usr/bin/service') ? '/usr/bin/service' : '/sbin/service') if
+		!const_defined?(:ServiceCommand)
 
 	include Sfp::Resource
 

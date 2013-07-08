@@ -1,5 +1,7 @@
 require 'augeas' # require package libaugeas-ruby (Ubuntu)
 
+require File.expand_path(File.dirname(__FILE__)) + '/../service/service.rb'
+
 class Sfp::Module::Apache < Sfp::Module::Service
 	include Sfp::Resource
 

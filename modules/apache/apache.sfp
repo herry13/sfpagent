@@ -9,10 +9,12 @@ schema Apache extends Service {
 	php_mysql_module = false
 	server_name = ""
 
+	/** //-- bug: this is not working
 	libaugeas_ruby isa Package {
 		package_name = "libaugeas-ruby"
 		installed = true
 	}
+	**/
 
 	sub set_port(target isref Integer) {
 		condition {

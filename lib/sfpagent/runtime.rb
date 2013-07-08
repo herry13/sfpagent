@@ -24,9 +24,9 @@ class Sfp::Runtime
 
 	def get_state(sfp=false)
 		def cleanup(value)
-			value.accept(SfpState.new)
-			value
-			#value.select { |k,v| k[0,1] != '_' and !(v.is_a?(Hash) and v['_context'] != 'object') }
+			#value.accept(SfpState.new)
+			#value
+			value.select { |k,v| k[0,1] != '_' and !(v.is_a?(Hash) and v['_context'] != 'object') }
 			#value.keys.each { |k| value[k] = cleanup(value[k]) if value[k].is_a?(Hash) }
 		end
 
