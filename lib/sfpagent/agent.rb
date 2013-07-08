@@ -179,10 +179,10 @@ module Sfp
 
 		# Return the current state of the model.
 		#
-		def self.get_state
+		def self.get_state(as_sfp=true)
 			return nil if !defined? @@runtime or @@runtime.nil?
 			begin
-				return @@runtime.get_state
+				return @@runtime.get_state(as_sfp)
 			rescue Exception => e
 				@@logger.error "Get state [Failed] #{e}"
 			end
@@ -330,8 +330,14 @@ module Sfp
 					elsif path == '/state'
 						status, content_type, body = get_state
 
+					elsif path == '/sfpstate'
+						status, content_type, body = get_state({:as_sfp => true})
+
 					elsif path =~ /^\/state\/.+/
 						status, content_type, body = get_state({:path => path[7, path.length-7]})
+
+					elsif path =~ /^\/sfpstate\/.+/
+						status, content_type, body = get_state({:path => path[10, path.length-10]})
 
 					elsif path == '/model'
 						status, content_type, body = get_model
@@ -422,7 +428,7 @@ module Sfp
 			end
 
 			def get_state(p={})
-				state = Sfp::Agent.get_state
+				state = Sfp::Agent.get_state(!!p[:as_sfp])
 
 				# The model is not exist.
 				return [404, 'text/plain', 'There is no model!'] if state.nil?

@@ -22,7 +22,7 @@ class Sfp::Runtime
 		mod.send method_name.to_sym, params
 	end
 
-	def get_state(sfp=false)
+	def get_state(as_sfp=false)
 		def cleanup(value)
 			#value.accept(SfpState.new)
 			#value
@@ -34,7 +34,7 @@ class Sfp::Runtime
 		# @param value a Hash
 		# @return a Hash which is the state of the object
 		#
-		def get_module_state(value, root, sfp=false)
+		def get_module_state(value, root, as_sfp=false)
 			# extract class name
 			class_name = value['_isa'][2, value['_isa'].length]
 
@@ -44,38 +44,32 @@ class Sfp::Runtime
 
 			# create an instance of the schema
 			mod = Sfp::Module::const_get(class_name).new
-			model = cleanup(root.at?(value['_isa']))
-			mod.init(cleanup(value), model)
+			default = cleanup(root.at?(value['_isa']))
+			model = cleanup(value)
+			mod.init(model, default)
 
 			# update and get state
 			mod.update_state
 			state = mod.state
 
-			if sfp
-				# insert all hidden attributes, except "_parent"
-				value.each { |k,v|
-					next if k[0,1] != '_' or k == '_parent'
-					state[k] = v
-				}
-				value.each { |k,v|
-					next if !v.is_a?(Hash) or v['_context'] != 'procedure'
-					state[k] = v
-				}
-			end
-
+			# insert all hidden attributes, except "_parent"
+			value.each do |k,v|
+				state[k] = v if (k[0,1] == '_' and k != '_parent') or
+					(v.is_a?(Hash) and v['_context'] == 'procedure')
+			end if as_sfp
 			[mod, state]
 		end
 
 		# Return the state of an object
 		#
-		def get_object_state(value, root, sfp=false)
+		def get_object_state(value, root, as_sfp=false)
 			modules = {}
 			state = {}
 			if value['_context'] == 'object' and value['_isa'].to_s.isref
 				if value['_isa'] != '$.Object'
 					# if this value is an instance of a subclass of Object, then
 					# get the current state of this object
-					modules[:_self], state = get_module_state(value, root, sfp)
+					modules[:_self], state = get_module_state(value, root, as_sfp)
 				end
 			end
 
@@ -84,7 +78,7 @@ class Sfp::Runtime
 			(value.keys - state.keys).each { |key|
 				next if key[0,1] == '_'
 				if value[key].is_a?(Hash)
-					modules[key], state[key] = get_object_state(value[key], root, sfp) if value[key]['_context'] == 'object'
+					modules[key], state[key] = get_object_state(value[key], root, as_sfp) if value[key]['_context'] == 'object'
 				else
 					state[key] = Sfp::Undefined.new
 				end
@@ -95,7 +89,7 @@ class Sfp::Runtime
 
 		root = Sfp::Helper.deep_clone(@root)
 		root.accept(Sfp::Visitor::ParentEliminator.new)
-		@modules, state = get_object_state(root, root, sfp)
+		@modules, state = get_object_state(root, root, as_sfp)
 
 		state
 	end

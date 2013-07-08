@@ -54,7 +54,7 @@ elsif opts[:state]
 	opts[:daemon] = false
 	opts = Sfp::Agent.check_config(opts)
 	Sfp::Agent.load_modules(opts)
-	state = Sfp::Runtime.new(parse(model_file)).get_state
+	state = Sfp::Runtime.new(parse(model_file)).get_state(true)
 	puts JSON.pretty_generate(state)
 
 elsif opts[:execute]
