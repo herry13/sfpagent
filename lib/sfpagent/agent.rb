@@ -303,11 +303,6 @@ module Sfp
 				@logger = logger
 			end
 
-			def query_to_json(query, json=false)
-				return query['json'] if json
-				JSON[query['json']]
-			end
-
 			# Process HTTP Get request
 			#
 			# uri:
@@ -372,7 +367,7 @@ module Sfp
 				else
 					path = (request.path[-1,1] == '/' ? ryyequest.path.chop : request.path)
 					if path == '/execute'
-						status, content_type, body = self.execute({:action => query_to_json(request.query)})
+						status, content_type, body = self.execute({:query => request.query})
 					end
 				end
 
@@ -469,7 +464,11 @@ module Sfp
 			end
 
 			def execute(p={})
-				return [200, '', ''] if Sfp::Agent.execute_action(p[:action])
+				return [400, '', ''] if not p[:query].has_key?('action')
+				begin
+					return [200, '', ''] if Sfp::Agent.execute_action(JSON[p[:query]['action']])
+				rescue
+				end
 				[500, '', '']
 			end
 
