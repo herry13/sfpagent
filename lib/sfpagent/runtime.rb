@@ -37,13 +37,16 @@ class Sfp::Runtime
 		def get_module_state(value, root, sfp=false)
 			# extract class name
 			class_name = value['_isa'][2, value['_isa'].length]
+
 			# throw an exception if schema's implementation is not exist!
 			raise Exception, "Implementation of schema #{class_name} is not available!" if
 				Sfp::Module.constants.index(class_name.to_sym).nil?
+
 			# create an instance of the schema
 			mod = Sfp::Module::const_get(class_name).new
 			model = cleanup(root.at?(value['_isa']))
 			mod.init(cleanup(value), model)
+
 			# update and get state
 			mod.update_state
 			state = mod.state
@@ -75,6 +78,7 @@ class Sfp::Runtime
 					modules[:_self], state = get_module_state(value, root, sfp)
 				end
 			end
+
 			# get the state for each attributes which are not covered by this
 			# object's module
 			(value.keys - state.keys).each { |key|

@@ -36,7 +36,7 @@ class Sfp::Module::Package
 	def uninstall(p={})
 		package = @model['package_name'].to_s.strip
 		return false if package.length <= 0
-		return true if not installed?(package)
+		return true if not Sfp::Module::Package.installed?(package)
 		system("apt-get -y --purge autoremove")
 		return (!!system("sudo apt-get -y --purge remove #{package}") and
 			!!system("sudo apt-get -y --purge autoremove") and

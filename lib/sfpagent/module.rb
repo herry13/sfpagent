@@ -8,7 +8,8 @@ module Sfp::Resource
 		@model = {}
 		model.each { |k,v| @model[k] = v }
 		@state = {}
-		default.each { |k,v| @state[k] = v }
+		@default = {}
+		default.each { |k,v| @state[k] = @default[k] = v }
 	end
 
 	def update_state
