@@ -1,7 +1,7 @@
 schema Package {
 	package_name = ""
 	installed = false
-	version = ""
+	version : String
 
 	sub install {
 		condition {

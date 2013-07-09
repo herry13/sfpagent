@@ -35,11 +35,11 @@ class Sfp::Module::Apache < Sfp::Module::Service
 
 		# port
 		data = (File.file?("/etc/apache2/ports.conf") ? `/bin/grep -e "^Listen " /etc/apache2/ports.conf` : "")
-		@state['port'] = (data.length > 0 ?	@state["port"] = data.split(' ')[1].to_i : 0)
+		@state['port'] = (data.length > 0 ?	@state["port"] = data.split(' ')[1].to_i : 80)
 
 		# document root
 		data = (File.file?(ConfigFile) ? `/bin/grep -e "DocumentRoot " #{ConfigFile}` : "")
-		@state['document_root'] = (data.length > 0 ? data.strip.split(' ')[1] : '')
+		@state['document_root'] = (data.length > 0 ? data.strip.split(' ')[1] : '/var/www')
 
 		# ServerName
 		data = (File.file?(ConfigFile) ? `/bin/grep -e "ServerName " #{ConfigFile}` : "")
@@ -51,7 +51,8 @@ class Sfp::Module::Apache < Sfp::Module::Service
 			File.open(InstallingLockFile, 'w') { |f| f.write(' ') }
 			return (self.class.superclass.instance_method(:install).bind(self).call and
 				self.stop)
-		rescue
+		rescue Exception => e
+			Sfp::Agent.logger.error e.to_s + "\n" + e.backtrace.join("\n")
 		ensure
 			File.delete(InstallingLockFile) if File.exist?(InstallingLockFile)
 		end
@@ -113,9 +114,11 @@ class Sfp::Module::Apache < Sfp::Module::Service
 
 	def install_php_mysql_module(p={})
 		begin
+			self.init2 if @php_mysql_package.nil?
 			File.open(NotRunningLockFile, 'w') { |f| f.write(' ') }
 			return self.stop if @php_mysql_package.install
-		rescue
+		rescue Exception => e
+			Sfp::Agent.logger.error e.to_s + "\n" + e.backtrace.join("\n")
 		ensure
 			File.delete(NotRunningLockFile) if File.exist?(NotRunningLockFile)
 		end
@@ -124,9 +127,11 @@ class Sfp::Module::Apache < Sfp::Module::Service
 
 	def uninstall_php_mysql_module(p={})
 		begin
+			self.init2 if @php_mysql_package.nil?
 			File.open(NotRunningLockFile, 'w') { |f| f.write(' ') }
 			return self.stop if @php_mysql_package.uninstall
-		rescue
+		rescue Exception => e
+			Sfp::Agent.logger.error e.to_s + "\n" + e.backtrace.join("\n")
 		ensure
 			File.delete(NotRunningLockFile) if File.exist?(NotRunningLockFile)
 		end
@@ -148,9 +153,11 @@ class Sfp::Module::Apache < Sfp::Module::Service
 
 	def uninstall_php_module(p={})
 		begin
+			self.init2 if @php_package.nil?
 			File.open(NotRunningLockFile, 'w') { |f| f.write(' ') }
 			return self.stop if @php_package.uninstall
-		rescue
+		rescue Exception => e
+			Sfp::Agent.logger.error e.to_s + "\n" + e.backtrace.join("\n")
 		ensure
 			File.delete(NotRunningLockFile) if File.exist?(NotRunningLockFile)
 		end

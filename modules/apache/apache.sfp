@@ -5,9 +5,11 @@ schema Apache extends Service {
 	service_name = "apache2"
 	port = 80
 	document_root = "/var/www"
-	php_module = false
-	php_mysql_module = false
-	server_name = ""
+	installed : Bool
+	running : Bool
+	php_module : Bool // = false
+	php_mysql_module : Bool // = false
+	server_name : String // = ""
 
 	/** //-- bug: this is not working
 	libaugeas_ruby isa Package {
