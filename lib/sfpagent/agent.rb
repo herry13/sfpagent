@@ -201,6 +201,7 @@ module Sfp
 				return result
 			rescue Exception => e
 				logger.info "Executing #{action['name']} [Failed] #{e}\n#{e.backtrace.join("\n")}"
+				logger.error "#{e}\n#{e.bracktrace.join("\n")}"
 			end
 			false
 		end

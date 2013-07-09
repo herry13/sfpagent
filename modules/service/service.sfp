@@ -2,7 +2,7 @@ include "../package/package.sfp"
 
 schema Service extends Package {
 	service_name = ""
-	running = false
+	running : Bool // = false
 	
 	procedure uninstall {
 		condition {

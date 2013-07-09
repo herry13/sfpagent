@@ -6,14 +6,8 @@ class Sfp::Module::Mysql < Sfp::Module::Service
 	include Sfp::Resource
 
 	def update_state
-		reset
-		#@state['package_name'] = 'mysql-server'
-		@state['service_name'] = 'mysql'
-
-		# package mysql-server: installed, version, running
-		@state['installed'] = Sfp::Module::Package.installed?(@model['package_name'])
-		@state['version'] = Sfp::Module::Package.version?(@model['package_name'])
-		@state['running'] = Sfp::Module::Service.running?(@model['package_name'])
+		# call superclass update_state method
+		self.class.superclass.instance_method(:update_state).bind(self).call
 
 		# port
 		data = (File.file?("/etc/mysql/my.cnf") ? `/bin/grep -e "^port" /etc/mysql/my.cnf` : "")
@@ -23,7 +17,7 @@ class Sfp::Module::Mysql < Sfp::Module::Service
 		if File.file?('/etc/mysql/nuri.cnf')
 			@state["root_password"] = `cat /etc/mysql/nuri.cnf 2>/dev/null`.to_s.sub(/\n$/,'')
 		else
-			@state['root_password'] = ''
+			@state['root_password'] = 'mysql'
 		end
 
 		# can be accessed from outside?
@@ -34,37 +28,38 @@ class Sfp::Module::Mysql < Sfp::Module::Service
 			@state['public'] = false
 		end
 	end
-	
+
+	def exec_seq(*commands)
+		commands.each { |c| raise Exception, "Cannot execute: #{c}" if !system(c) }
+	end
+
 	def install(params={})
-#		return (Nuri::Helper::Command.exec('echo mysql-server mysql-server/root_password select mysql | debconf-set-selections') and
-#			Nuri::Helper::Command.exec('echo mysql-server mysql-server/root_password_again select mysql | debconf-set-selections') and
-#			Nuri::Helper::Package.install('mysql-server') and
-#			Nuri::Helper::Command.exec('echo "\n[mysqld]\nmax_connect_errors = 10000" >> /etc/mysql/my.cnf') and
-#			Nuri::Helper::Service.stop('mysql') and
-#			Nuri::Helper::Command.exec('/bin/echo mysql > /etc/mysql/nuri.cnf') and
-#			Nuri::Helper::Command.exec('/bin/chmod 0400 /etc/mysql/nuri.cnf'))
+		begin
+			exec_seq 'echo mysql-server mysql-server/root_password select mysql | debconf-set-selections',
+				'echo mysql-server mysql-server/root_password_again select mysql | debconf-set-selections',
+				'apt-get -y --purge autoremove',
+				'apt-get -y update',
+				"apt-get -y install #{@model['package_name']}",
+				'echo "\n[mysqld]\nmax_connect_errors = 10000" >> /etc/mysql/my.cnf',
+				'service mysql stop',
+				'/bin/echo mysql > /etc/mysql/nuri.cnf',
+				'/bin/chmod 0400 /etc/mysql/nuri.cnf'
+			#exec_seq(commands)
+			return true
+		rescue Exception => e
+			Sfp::Agent.logger.error "#{e}\n#{e.backtrace.join("\n")}"
+		end
 		false
 	end
 	
 	def uninstall(params={})
-#		Nuri::Helper::Command.exec('/bin/rm -f /etc/mysql/nuri.cnf') if
-#			File.exist?('/etc/mysql/nuri.cnf')
-#		result = Nuri::Helper::Package.uninstall('mysql-server')
-#		if result == false
-#			result = Nuri::Helper::Package.uninstall('mysql*')
-#		end
-#		#Nuri::Helper::Command.exec('/bin/rm -rf /etc/mysql') if File.exist?('/etc/mysql')
-#		return result
-		false
-	end
-	
-	def start(params={})
-#		return Nuri::Helper::Service.start('mysql')
-		false
-	end
-	
-	def stop(params={})
-#		return Nuri::Helper::Service.stop('mysql')
+		system('/bin/rm -f /etc/mysql/nuri.cnf') if File.exist?('/etc/mysql/nuri.cnf')
+		result = self.class.superclass.instance_method(:uninstall).bind(self).call
+		if result == false
+			system('apt-get remove -y mysql*; apt-get autoremove -y; apt-get autoremove -y')
+		end
+		system('/bin/rm -rf /etc/mysql') if File.exist?('/etc/mysql')
+		return result
 		false
 	end
 	
@@ -87,7 +82,7 @@ class Sfp::Module::Mysql < Sfp::Module::Service
 			cmd = '/bin/sed -i "s/^#bind\-address/bind\-address/g" /etc/mysql/my.cnf'
 		end
 		return false if not system(cmd)
-		if self.get_state('running')
+		if Sfp::Module::Service.running?(@model['service_name'])
 			return (self.stop and self.start)
 		end
 		true

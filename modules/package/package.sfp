@@ -1,23 +1,23 @@
 schema Package {
 	package_name = ""
-	installed = false
+	installed : Bool //= false
 	version : String
 
 	sub install { 
 		condition {
-			installed = false
+			this.installed = false
 		}
 		effect {
-			installed = true
+			this.installed = true
 		}
 	}
 
 	sub uninstall {
 		condition {
-			installed = true
+			this.installed = true
 		}
 		effect {
-			installed = false
+			this.installed = false
 		}
 	}
 }

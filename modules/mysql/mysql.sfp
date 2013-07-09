@@ -3,9 +3,9 @@ include "../service/service.sfp"
 schema Mysql extends Service {
 	package_name = "mysql-server"
 	service_name = "mysql"
-	port = 3306
+	port : Int
 	root_password : String
-	public = false
+	public : Bool
 
 	sub set_root_password (passwd isref String) {
 		condition {
@@ -22,6 +22,16 @@ schema Mysql extends Service {
 		}
 		effect {
 			this.public = pub
+		}
+	}
+
+	sub set_port (target isref Integer) {
+		condition {
+			this.installed = true
+			this.running = false
+		}
+		effect {
+			this.port = target
 		}
 	}
 }

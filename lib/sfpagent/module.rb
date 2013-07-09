@@ -16,9 +16,17 @@ module Sfp::Resource
 		@state = {}
 	end
 
-	def reset
+	def to_model
 		@state = {}
 		@model.each { |k,v| @state[k] = v }
+	end
+
+	alias_method :reset, :to_model
+
+	protected
+	def exec_seq(*commands)
+		commands = [commands.to_s] if not commands.is_a?(Array)
+		commands.each { |c| raise Exception, "Cannot execute: #{c}" if !system(c) }
 	end
 end
 
