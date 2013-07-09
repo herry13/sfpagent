@@ -2,8 +2,8 @@ schema File {
 	path is ""
 	created is true
 	content is ""
-	user is ""
-	group is ""
+	user : String
+	group : String
 
 	procedure create (content isref String) {
 		condition { }

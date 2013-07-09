@@ -1,0 +1,27 @@
+include "../service/service.sfp"
+
+schema Mysql extends Service {
+	package_name = "mysql-server"
+	service_name = "mysql"
+	port = 3306
+	root_password : String
+	public = false
+
+	sub set_root_password (passwd isref String) {
+		condition {
+			this.running = true
+		}
+		effect {
+			this.root_password = passwd
+		}
+	}
+
+	sub set_public (pub isref Boolean) {
+		condition {
+			this.installed = true
+		}
+		effect {
+			this.public = pub
+		}
+	}
+}
