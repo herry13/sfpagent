@@ -3,7 +3,7 @@ schema Package {
 	installed = false
 	version : String
 
-	sub install {
+	sub install { 
 		condition {
 			installed = false
 		}
