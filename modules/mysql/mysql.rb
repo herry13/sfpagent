@@ -6,6 +6,10 @@ class Sfp::Module::Mysql < Sfp::Module::Service
 	include Sfp::Resource
 
 	def update_state
+		reset
+		#@state['package_name'] = 'mysql-server'
+		@state['service_name'] = 'mysql'
+
 		# package mysql-server: installed, version, running
 		@state['installed'] = Sfp::Module::Package.installed?(@model['package_name'])
 		@state['version'] = Sfp::Module::Package.version?(@model['package_name'])
