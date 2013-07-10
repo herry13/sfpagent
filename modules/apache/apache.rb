@@ -43,17 +43,17 @@ class Sfp::Module::Apache < Sfp::Module::Service
 
 		# lb_members
 		members = []
+		#@state['lb_members_address'] = []
 		if @state['is_load_balancer']
 			data =`grep "BalancerMember" #{LoadBalancerConfigFile} 2>/dev/null`.chop
+			agents = Sfp::Agent.get_agents
 			data.split("\n").each do |line|
 				member = line.strip.split(' ')
 				next if member[1] == nil
 				_, address = member[1].split('http://', 2)
-				name = Nuri::Util.get_system_information.index(address)
-				if not name.nil?
-					ref = '$.' + name
-					members.push(ref)
-				end
+				agent = agents.select { |k,v| v['address'] == address }
+				members << '$.' + agent.keys.first if agent.length > 0
+				#@state['lb_members_address'] << line.strip
 			end
 			members.sort!
 		end

@@ -20,6 +20,7 @@ module Sfp
 		PIDFile = "#{CachedDir}/sfpagent.pid"
 		LogFile = "#{CachedDir}/sfpagent.log"
 		ModelFile = "#{CachedDir}/sfpagent.model"
+		AgentsDataFile = "#{CachedDir}/sfpagent.agents"
 
 		@@logger = WEBrick::Log.new(LogFile, WEBrick::BasicLog::INFO ||
 		                                     WEBrick::BasicLog::ERROR ||
@@ -131,7 +132,7 @@ module Sfp
 			begin
 				@@model_lock.synchronize {
 					@@logger.info "Setting the model [Wait]"
-					File.open(ModelFile, 'w', 0644) { |f|
+					File.open(ModelFile, 'w', 0600) { |f|
 						f.write(JSON.generate(model))
 						f.flush
 					}
@@ -151,9 +152,7 @@ module Sfp
 			return nil if not File.exist?(ModelFile)
 			begin
 				@@model_lock.synchronize {
-					File.open(ModelFile, 'r') { |f|
-						return JSON[f.read]
-					}
+					return JSON[File.read(ModelFile)]
 				}
 			rescue Exception => e
 				@@logger.error "Get the model [Failed] #{e}\n#{e.backtrace}"
@@ -249,7 +248,7 @@ module Sfp
 			(defined?(@@modules) and @@modules.is_a?(Array) ? @@modules : [])
 		end
 
-		def self.delete_module(name)
+		def self.uninstall_module(name)
 			return false if @@config[:modules_dir] == ''
 			
 			module_dir = "#{@@config[:modules_dir]}/#{name}"
@@ -299,6 +298,31 @@ module Sfp
 			File.read(LogFile)
 		end
 
+		def self.set_agents(agents)
+			File.open(AgentsDataFile, 'w', 0600) do |f|
+				raise Exception, "Invalid agents list." if not agents.is_a?(Hash)
+				buffer = {}
+				agents.each { |name,data|
+					raise Exception "Invalid agents list." if not data.is_a?(Hash) or
+						not data.has_key?('address') or data['address'].to_s.strip == '' or
+						not data.has_key?('port')
+					buffer[name]['address'] = data['address'].to_s
+					buffer[name]['port'] = data['port'].to_s.strip.to_i
+					buffer[name]['port'] = DefaultPort if buffer[name]['port'] == 0
+				}
+				f.write(JSON.generate(buffer))
+				f.flush
+			end
+			true
+		end
+
+		def self.get_agents
+			return {} if not File.exist?(AgentsDataFile)
+			JSON[File.read(AgentsDataFile)]
+		end
+
+		# A class that handles each request.
+		#
 		class Handler < WEBrick::HTTPServlet::AbstractServlet
 			def initialize(server, logger)
 				@logger = logger
@@ -379,8 +403,10 @@ module Sfp
 
 			# uri:
 			#	/model => receive a new model and save to cached file
-			#	/modules => store a module
-			#
+			#	/modules => save the module if parameter "module" is provided
+			#               delete the module if parameter "module" is not provided
+			#	/agents => save the agents' list if parameter "agents" is provided
+			#	           delete all agents if parameter "agents" is not provided
 			def do_PUT(request, response)
 				status = 400
 				content_type, body = ''
@@ -392,9 +418,17 @@ module Sfp
 					if path == '/model'
 						status, content_type, body = self.set_model({:query => request.query})
 
-					elsif path =~ /\/modules\/.+/
-						status, content_type, body = self.manage_module({:name => path[9, path.length-9],
+					elsif path =~ /\/module\/.+/
+						status, content_type, body = self.manage_modules({:name => path[8, path.length-8],
 						                                                 :query => request.query})
+
+					elsif path =~ /\/modules\/.+/
+						status, content_type, body = self.manage_modules({:name => path[9, path.length-9],
+						                                                 :query => request.query})
+
+					elsif path =~ '/agents'
+						status, content_type, body = self.manage_agents({:query => request.query})
+
 					end
 				end
 
@@ -403,12 +437,25 @@ module Sfp
 				response.body = body
 			end
 
-			def manage_module(p={})
+			def manage_agents(p={})
+				begin
+					if p[:query].has_key?('agents')
+						return [200, '', ''] if Sfp::Agent.set_agents(p[:query]['agents'])
+					else
+						return [200, '', ''] if Sfp::Agent.set_agents({})
+					end
+				rescue Exception => e
+					@logger.error "Saving agents list [Failed]\n#{e}\n#{e.backtrace.join("\n")}"
+				end
+				[500, '', '']
+			end
+
+			def manage_modules(p={})
 				p[:name], _ = p[:name].split('/', 2)
 				if p[:query].has_key?('module')
 					return [200, '', ''] if Sfp::Agent.install_module(p[:name], p[:query]['module'])
 				else
-					return [200, '', ''] if Sfp::Agent.delete_module(p[:name])
+					return [200, '', ''] if Sfp::Agent.uninstall_module(p[:name])
 				end
 				[500, '', '']
 			end
@@ -489,9 +536,8 @@ module Sfp
 	end
 
 	def self.require(gem, pack=nil)
-		Kernel.require gem
+		::Kernel.require gem
 	rescue LoadError => e
-		system("gem install #{pack||gem} --no-ri --no-rdoc")
-		Kernel.require gem
+		::Kernel.require gem if system("gem install #{pack||gem} --no-ri --no-rdoc")
 	end
 end
