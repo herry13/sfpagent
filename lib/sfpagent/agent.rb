@@ -426,7 +426,7 @@ module Sfp
 						status, content_type, body = self.manage_modules({:name => path[9, path.length-9],
 						                                                 :query => request.query})
 
-					elsif path =~ '/agents'
+					elsif path == '/agents'
 						status, content_type, body = self.manage_agents({:query => request.query})
 
 					end
