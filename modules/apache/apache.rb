@@ -6,16 +6,9 @@ class Sfp::Module::Apache < Sfp::Module::Service
 	include Sfp::Resource
 
 	ConfigFile = '/etc/apache2/sites-available/default'
+	LoadBalancerConfigFile = '/etc/apache2/sites-enabled/load_balancer'
 	InstallingLockFile = '/tmp/sfp_apache_installing.lock'
 	NotRunningLockFile = '/tmp/sfp_apache_not_running.lock'
-
-	def init2
-		@php_package = Sfp::Module::Package.new
-		@php_package.init({'package_name' => 'libapache2-mod-php5'}, {'package_name' => 'libapache2-mod-php5'})
-
-		@php_mysql_package = Sfp::Module::Package.new
-		@php_mysql_package.init({'package_name' => 'php5-mysql'}, {'package_name' => 'php5-mysql'})
-	end
 
 	def update_state
 		# Call method 'update_state' of Sfp::Module::Service (superclass)
@@ -41,9 +34,38 @@ class Sfp::Module::Apache < Sfp::Module::Service
 		data = (File.file?(ConfigFile) ? `/bin/grep -e "DocumentRoot " #{ConfigFile}` : "")
 		@state['document_root'] = (data.length > 0 ? data.strip.split(' ')[1] : '/var/www')
 
-		# ServerName
+		# server_name
 		data = (File.file?(ConfigFile) ? `/bin/grep -e "ServerName " #{ConfigFile}` : "")
 		@state['server_name'] = (data.length > 0 ? data.strip.split(' ')[1] : '')
+
+		# is_load_balancer
+		@state['is_load_balancer'] = File.exists?(LoadBalancerConfigFile)
+
+		# lb_members
+		members = []
+		if @state['is_load_balancer']
+			data =`grep "BalancerMember" #{LoadBalancerConfigFile} 2>/dev/null`.chop
+			data.split("\n").each do |line|
+				member = line.strip.split(' ')
+				next if member[1] == nil
+				_, address = member[1].split('http://', 2)
+				name = Nuri::Util.get_system_information.index(address)
+				if not name.nil?
+					ref = '$.' + name
+					members.push(ref)
+				end
+			end
+			members.sort!
+		end
+		@state['lb_members'] = members
+
+		# lb_method
+		if @state['is_load_balancer']
+			data = `grep 'ProxySet' #{LoadBalancerConfigFile} | grep 'lbmethod'`.strip.split("=")
+			@state['lb_method'] = data[1].to_s
+		else
+			@state['lb_method'] = ''
+		end
 	end
 
 	def install(p={})
@@ -52,7 +74,7 @@ class Sfp::Module::Apache < Sfp::Module::Service
 			return (self.class.superclass.instance_method(:install).bind(self).call and
 				self.stop)
 		rescue Exception => e
-			Sfp::Agent.logger.error e.to_s + "\n" + e.backtrace.join("\n")
+			Sfp::Agent.logger.error "#{e}\n#{e.backtrace.join("\n")}"
 		ensure
 			File.delete(InstallingLockFile) if File.exist?(InstallingLockFile)
 		end
@@ -65,9 +87,80 @@ class Sfp::Module::Apache < Sfp::Module::Service
 				system('/bin/rm -rf /etc/apache2') if File.directory?('/etc/apache2')
 				return true
 			end
-		rescue
+		rescue Exception => e
+			Sfp::Agent.logger.error "#{e}\n#{e.backtrace.join("\n")}"
 		end
 		false
+	end
+
+	def enable_load_balancer(p={})
+		begin
+			File.open(InstallingLockFile, 'w') { |f| f.write(' ') }
+			template_file = File.expand_path(File.dirname(__FILE__)) + "/load_balancer"
+			exec_seq 'a2enmod proxy',
+				'a2enmod proxy_balancer',
+				'a2enmod proxy_http',
+				'a2enmod status',
+				"cp -f #{template_file} #{LoadBalancerConfigFile}",
+				"sudo service #{@model['service_name']} stop"
+			return true
+		rescue Exception => e
+			Sfp::Agent.logger.error "#{e}\n#{e.backtrace.join("\n")}"
+		ensure
+			File.delete(InstallingLockFile) if File.exist?(InstallingLockFile)
+		end
+		false
+	end
+
+	def disable_load_balancer(p={})
+		begin
+			File.open(InstallingLockFile, 'w') { |f| f.write(' ') }
+			exec_seq  'a2dismod proxy_balancer',
+				'a2dismod proxy_http',
+				'a2dismod proxy',
+				'a2dismod status',
+				"rm -f #{LoadBalancerConfigFile}",
+				"sudo service #{@model['service_name']} stop"
+			return true
+		rescue Exception => e
+			Sfp::Agent.logger.error "#{e}\n#{e.backtrace.join("\n")}"
+		ensure
+			File.delete(InstallingLockFile) if File.exist?(InstallingLockFile)
+		end
+		false
+	end
+
+	def set_lb_method(p={})
+		return false if ['byrequests', 'bytraffic', 'bybusyness'].index(p['target']).nil?
+		return !!system("sed -i -e 's/^\\s*ProxySet.*lbmethod=.*/ProxySet lbmethod=#{p['target']}/' #{LoadBalancerConfigFile}")
+	end
+
+	def set_members(params={})
+		members = ''
+		reverses = ''
+		params['members'].each do |ref|
+			path = ref.push('address')
+			address = self.get_state(path)
+			members += "\n\tBalancerMember http://#{address}"
+			reverses += "\n\tProxyPassReverse / http://#{address}"
+		end
+		output = ''
+		data = File.read(ConfigFile)
+		data.each_line do |line|
+			xline = line.strip
+			next if xline.length <= 0
+			head, _ = xline.split(' ', 2)
+			next if head == 'BalancerMember' or head == 'ProxyPassReverse'
+			output += "#{line} \n"
+			if head == 'ProxySet'
+				output += "#{members}\n"
+			elsif head == '</Location>'
+				output += "#{reverses}\n"
+			end
+		end
+		File.open(LoadBalancerConfigFile, 'w') { |f| f.write(output) }
+		sleep 1
+		true
 	end
 
 	def set_port(p={})
@@ -162,5 +255,14 @@ class Sfp::Module::Apache < Sfp::Module::Service
 			File.delete(NotRunningLockFile) if File.exist?(NotRunningLockFile)
 		end
 		false
+	end
+
+	protected
+	def init2
+		@php_package = Sfp::Module::Package.new
+		@php_package.init({'package_name' => 'libapache2-mod-php5'}, {'package_name' => 'libapache2-mod-php5'})
+
+		@php_mysql_package = Sfp::Module::Package.new
+		@php_mysql_package.init({'package_name' => 'php5-mysql'}, {'package_name' => 'php5-mysql'})
 	end
 end

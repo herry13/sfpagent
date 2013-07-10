@@ -1,4 +1,5 @@
 include "../service/service.sfp"
+include "../node/node.sfp"
 
 schema Apache extends Service {
 	package_name = "apache2"
@@ -10,6 +11,11 @@ schema Apache extends Service {
 	php_module : Bool // = false
 	php_mysql_module : Bool // = false
 	server_name : String // = ""
+
+	// load balancer config
+	is_load_balancer = false
+	lb_members isset Node
+	lb_method : String  // byrequests, bytraffic, bybusyness
 
 	/** //-- bug: this is not working
 	libaugeas_ruby isa Package {
@@ -106,6 +112,53 @@ schema Apache extends Service {
 		}
 		effect {
 			this.php_mysql_module = false
+		}
+	}
+
+	sub enable_load_balancer {
+		condition {
+			this.installed = true
+			this.running = false
+			this.is_load_balancer = false
+		}
+		effect {
+			this.is_load_balancer = true
+		}
+	}
+
+	sub disable_load_balancer {
+		condition {
+			this.installed = true
+			this.running = false
+			this.is_load_balancer = true
+		}
+		effect {
+			this.is_load_balancer = false
+		}
+	}
+
+	sub set_members (members isset Machine) {
+		condition {
+			this.installed = true
+			this.running = false
+			this.is_load_balancer = true
+			foreach (members as m) {
+				m.running = true
+			}
+		}
+		effect {
+			this.members = members
+		}
+	}
+
+	sub set_lb_method (target isref String) {
+		condition {
+			this.installed = true
+			this.running = false
+			this.is_load_balancer = true
+		}
+		effect {
+			this.lb_method = target
 		}
 	}
 }
