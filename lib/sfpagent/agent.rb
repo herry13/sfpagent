@@ -440,7 +440,7 @@ module Sfp
 			def manage_agents(p={})
 				begin
 					if p[:query].has_key?('agents')
-						return [200, '', ''] if Sfp::Agent.set_agents(p[:query]['agents'])
+						return [200, '', ''] if Sfp::Agent.set_agents(JSON[p[:query]['agents']])
 					else
 						return [200, '', ''] if Sfp::Agent.set_agents({})
 					end
