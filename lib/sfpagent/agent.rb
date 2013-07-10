@@ -306,6 +306,7 @@ module Sfp
 					raise Exception "Invalid agents list." if not data.is_a?(Hash) or
 						not data.has_key?('address') or data['address'].to_s.strip == '' or
 						not data.has_key?('port')
+					buffer[name] = {}
 					buffer[name]['address'] = data['address'].to_s
 					buffer[name]['port'] = data['port'].to_s.strip.to_i
 					buffer[name]['port'] = DefaultPort if buffer[name]['port'] == 0
