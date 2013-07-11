@@ -1,8 +1,7 @@
-schema Machine {
+schema OS {
 	running = false
-	created = true
 
-	procedure stop {
+	sub shutdown {
 		condition { }
 		effect {
 			this.running = false
