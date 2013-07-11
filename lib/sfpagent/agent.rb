@@ -304,7 +304,7 @@ module Sfp
 			if n <= 0
 				File.read(LogFile)
 			else
-				`tail -n #{LogFile}`
+				`tail -n #{n} #{LogFile}`
 			end
 		end
 
