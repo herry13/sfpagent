@@ -1,7 +1,7 @@
 require 'rubygems'
 require 'json'
 
-class Sfp::Module::Machine
+class Sfp::Module::OS
 	include Sfp::Resource
 
 	def update_state
