@@ -1,10 +1,10 @@
 schema OS {
-	running = false
-/*
+	running : Bool
+
 	sub shutdown {
 		condition { }
 		effect {
 			this.running = false
 		}
-	}*/
+	}
 }

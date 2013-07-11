@@ -1,7 +1,7 @@
 schema File {
 	path is ""
-	created is true
-	content is ""
+	created : Bool
+	content : String
 	user : String
 	group : String
 

@@ -1,4 +1,4 @@
 schema Cloud {
-	running is false
+	running : Bool
 	description is ""
 }
