@@ -52,22 +52,22 @@ module Sfp
 		#	:keyfile
 		#
 		def self.start(p={})
-			@@config = p = check_config(p)
-
-			server_type = (p[:daemon] ? WEBrick::Daemon : WEBrick::SimpleServer)
-			port = (p[:port] ? p[:port] : DefaultPort)
-
-			config = {:Host => '0.0.0.0', :Port => port, :ServerType => server_type,
-			          :Logger => @@logger}
-			if p[:ssl]
-				config[:SSLEnable] = true
-				config[:SSLVerifyClient] = OpenSSL::SSL::VERIFY_NONE
-				config[:SSLCertificate] = OpenSSL::X509::Certificate.new(File.open(p[:certfile]).read)
-				config[:SSLPrivateKey] = OpenSSL::PKey::RSA.new(File.open(p[:keyfile]).read)
-				config[:SSLCertName] = [["CN", WEBrick::Utils::getservername]]
-			end
-
 			begin
+				@@config = p = check_config(p)
+	
+				server_type = (p[:daemon] ? WEBrick::Daemon : WEBrick::SimpleServer)
+				port = (p[:port] ? p[:port] : DefaultPort)
+	
+				config = {:Host => '0.0.0.0', :Port => port, :ServerType => server_type,
+				          :Logger => @@logger}
+				if p[:ssl]
+					config[:SSLEnable] = true
+					config[:SSLVerifyClient] = OpenSSL::SSL::VERIFY_NONE
+					config[:SSLCertificate] = OpenSSL::X509::Certificate.new(File.open(p[:certfile]).read)
+					config[:SSLPrivateKey] = OpenSSL::PKey::RSA.new(File.open(p[:keyfile]).read)
+					config[:SSLCertName] = [["CN", WEBrick::Utils::getservername]]
+				end
+
 				load_modules(p)
 				reload_model
 
