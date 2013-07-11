@@ -40,7 +40,7 @@ class Sfp::Runtime
 
 			# throw an exception if schema's implementation is not exist!
 			raise Exception, "Implementation of schema #{class_name} is not available!" if
-				Sfp::Module.constants.index(class_name).nil?
+				not Sfp::Module.const_defined?(class_name)
 
 			# create an instance of the schema
 			mod = Sfp::Module::const_get(class_name).new

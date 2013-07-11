@@ -254,6 +254,17 @@ module Sfp
 			(defined?(@@modules) and @@modules.is_a?(Array) ? @@modules : [])
 		end
 
+		def self.uninstall_all_modules(p={})
+			return true if @@config[:modules_dir] == ''
+			if system("rm -rf #{@@config[:modules_dir]}/*")
+				load_modules(@@config)
+				@@logger.info "Deleting all modules [OK]"
+				return true
+			end
+			@@logger.info "Deleting all modules [Failed]"
+			false
+		end
+
 		def self.uninstall_module(name)
 			return false if @@config[:modules_dir] == ''
 			
@@ -437,6 +448,9 @@ module Sfp
 						status, content_type, body = self.manage_modules({:name => path[9, path.length-9],
 						                                                 :query => request.query})
 
+					elsif path == '/modules'
+						status, content_type, body = self.manage_modules({:delete => true})
+
 					elsif path == '/agents'
 						status, content_type, body = self.manage_agents({:query => request.query})
 
@@ -462,11 +476,15 @@ module Sfp
 			end
 
 			def manage_modules(p={})
-				p[:name], _ = p[:name].split('/', 2)
-				if p[:query].has_key?('module')
-					return [200, '', ''] if Sfp::Agent.install_module(p[:name], p[:query]['module'])
+				if p[:delete]
+					return [200, '', ''] if Sfp::Agent.uninstall_all_modules
 				else
-					return [200, '', ''] if Sfp::Agent.uninstall_module(p[:name])
+					p[:name], _ = p[:name].split('/', 2)
+					if p[:query].has_key?('module')
+						return [200, '', ''] if Sfp::Agent.install_module(p[:name], p[:query]['module'])
+					else
+						return [200, '', ''] if Sfp::Agent.uninstall_module(p[:name])
+					end
 				end
 				[500, '', '']
 			end
