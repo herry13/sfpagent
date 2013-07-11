@@ -380,7 +380,7 @@ module Sfp
 						status, content_type, body = [200, 'application/json', JSON.generate(Sfp::Agent.get_modules)]
 
 					elsif path == '/log'
-						status, content_type, body = [200, 'text/plain', Sfp::Agent.get_log(50)]
+						status, content_type, body = [200, 'text/plain', Sfp::Agent.get_log(100)]
 
 					end
 				end
