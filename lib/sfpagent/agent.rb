@@ -183,7 +183,7 @@ module Sfp
 			begin
 				return @@runtime.get_state(as_sfp)
 			rescue Exception => e
-				@@logger.error "Get state [Failed] #{e}"
+				@@logger.error "Get state [Failed] #{e}\n#{e.backtrace.join("\n")}"
 			end
 			false
 		end
