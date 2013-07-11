@@ -351,7 +351,7 @@ module Sfp
 					status = 403
 				else
 					path = (request.path[-1,1] == '/' ? request.path.chop : request.path)
-					if path == '/pid' and request.peeraddr[2] == 'localhost'
+					if path == '/pid' and (request.peeraddr[2] == 'localhost' or request.peeraddr[2] == '127.0.0.1')
 						status, content_type, body = save_pid
 
 					elsif path == '/state'
