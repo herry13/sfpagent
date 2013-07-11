@@ -51,7 +51,6 @@ class Sfp::Runtime
 			# update and get state
 			mod.update_state
 			state = mod.state
-puts state.keys.inspect
 
 			# insert all hidden attributes, except "_parent"
 			value.each do |k,v|
