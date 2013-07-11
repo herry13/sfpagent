@@ -78,7 +78,7 @@ module Sfp
 					begin
 						# send request to save PID
 						sleep 2
-						url = URI.parse("http://localhost:#{config[:Port]}/pid")
+						url = URI.parse("http://127.0.0.1:#{config[:Port]}/pid")
 						http = Net::HTTP.new(url.host, url.port)
 						if p[:ssl]
 							http.use_ssl = p[:ssl]
