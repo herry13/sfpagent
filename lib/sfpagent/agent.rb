@@ -14,7 +14,7 @@ module Sfp
 		else
 			CachedDir = File.expand_path('~/.sfpagent')
 		end
-		system("mkdir #{CachedDir}", 0700) if not File.exist?(CachedDir)
+		Dir.mkdir(CachedDir, 0700) if not File.exist?(CachedDir)
 
 		DefaultPort = 1314
 		PIDFile = "#{CachedDir}/sfpagent.pid"
