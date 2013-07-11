@@ -75,17 +75,21 @@ module Sfp
 				server.mount("/", Sfp::Agent::Handler, @@logger)
 
 				fork {
-					# send request to save PID
-					sleep 2
-					url = URI.parse("http://localhost:#{config[:Port]}/pid")
-					http = Net::HTTP.new(url.host, url.port)
-					if p[:ssl]
-						http.use_ssl = p[:ssl]
-						http.verify_mode = OpenSSL::SSL::VERIFY_NONE
+					begin
+						# send request to save PID
+						sleep 2
+						url = URI.parse("http://localhost:#{config[:Port]}/pid")
+						http = Net::HTTP.new(url.host, url.port)
+						if p[:ssl]
+							http.use_ssl = p[:ssl]
+							http.verify_mode = OpenSSL::SSL::VERIFY_NONE
+						end
+						req = Net::HTTP::Get.new(url.path)
+						http.request(req)
+						puts "\nSFP Agent is running with PID #{File.read(PIDFile)}" if File.exist?(PIDFile)
+					rescue Exception => e
+						Sfp::Agent.logger.warn "Cannot request /pid #{e}"
 					end
-					req = Net::HTTP::Get.new(url.path)
-					http.request(req)
-					puts "\nSFP Agent is running with PID #{File.read(PIDFile)}"
 				}
 
 				trap('INT') { server.shutdown }
