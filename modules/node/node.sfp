@@ -4,6 +4,7 @@ schema Node {
 	sfpAddress is ""
 	sfpPort is "1314"
 	is_virtual : Bool
+	created : Bool
 
 	os isa OS {
 		running is true

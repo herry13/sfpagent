@@ -4,11 +4,19 @@ class Sfp::Module::Node
 	def update_state
 		@state['sfpAddress'] = @model['sfpAddress']
 		@state['sfpPort'] = @model['sfpPort']
-		@state['is_virtual'] = case ::File.exist?('/proc/scsi/scsi')
-			when true
-				(`cat /proc/scsi/scsi`.sub(/Attached devices:/, '').strip.length <= 0)
+		@state['created'] = true
+
+		data = `dmidecode | grep -i product`.strip
+		if data.length <= 0
+			@state['is_virtual'] = true
+		else
+			_, product = data.split("\n")[0].split(":", 2)
+			product = product.strip.downcase
+			if product =~ /kvm/ or product =~ /virtualbox/ or product =~ /vmware/
+				@state['is_virtual'] = true
 			else
-				false
+				@state['is_virtual'] = false
 			end
+		end
 	end
 end

@@ -11,7 +11,7 @@ module Sfp::Module::BonfireHelper
 				:gateway => @model['gateway'],
 				:keys => @home_dir + '/bonfire.pem',
 				:cache => false,
-				:logger => nil #Sfp::Agent.logger
+				:logger => Sfp::Agent.logger
 			) if @session.nil?
 
 			@experiment = (@session.root.experiments.find { |e|
@@ -23,7 +23,7 @@ module Sfp::Module::BonfireHelper
 
 			return (!@session.nil? and !@experiment.nil? and !@location.nil?)
 		rescue Exception => e
-			puts e
+			Sfp::Agent.logger.warn "Cannot open connection! #{e}\n#{e.backtrace.join("\n")}"
 		end
 		false
 	end
@@ -65,7 +65,7 @@ module Sfp::Module::BonfireHelper
 
 		tries = 30 # 10 minutes
 		until [server].all? { |vm|
-			tries > 0 && running?(vm) && vm.ssh.accessible?
+			tries <= 0 || (running?(vm) && vm.ssh.accessible?)
 		} do
 			fail "#{name} has failed" if [server].any? { |vm|
 				vm['state'] == "FAILED"
@@ -111,7 +111,7 @@ module Sfp::Module::BonfireHelper
 			sleep 10
 			tries -= 1
 		end
-		running?(server)
+		!running?(server)
 	end
 
 	def get_servers(p={})
@@ -119,7 +119,7 @@ module Sfp::Module::BonfireHelper
 		p[:experiment].computes.find { |server|
 			servers[ server['name'] ] = running?(server)
 			false
-		} if not p[:experiment].nil?
+		} if p[:experiment]
 		servers
 	end
 

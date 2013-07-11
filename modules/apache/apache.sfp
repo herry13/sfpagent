@@ -4,8 +4,8 @@ include "../node/node.sfp"
 schema Apache extends Service {
 	package_name = "apache2"
 	service_name = "apache2"
-	port = 80
-	document_root = "/var/www"
+	port : Int // = 80
+	document_root : String //= "/var/www"
 	installed : Bool
 	running : Bool
 	php_module : Bool // = false
@@ -13,7 +13,7 @@ schema Apache extends Service {
 	server_name : String // = ""
 
 	// load balancer config
-	is_load_balancer = false
+	is_load_balancer : Bool
 	lb_members isset Node
 	lb_method : String  // byrequests, bytraffic, bybusyness
 

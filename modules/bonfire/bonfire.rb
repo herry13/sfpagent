@@ -1,7 +1,7 @@
 require 'restfully'
 require 'restfully/addons/bonfire'
 
-require File.expand_path(File.dirname(__FILE__)) + "/helper.rb"
+load File.expand_path(File.dirname(__FILE__)) + "/helper.rb"
 
 class Sfp::Module::Bonfire
 	include Sfp::Resource
@@ -33,6 +33,7 @@ class Sfp::Module::Bonfire
 			})
 			return !server.nil?
 		rescue Exception => e
+			Sfp::Agent.logger.error "Delete VM [Failed] #{e}\n#{e.backtrace.join("\n")}"
 		end
 		false
 	end
@@ -43,12 +44,13 @@ class Sfp::Module::Bonfire
 
 		begin
 			name.sub!(/^\$\./, '')
-			return self.delete_server({
+			return !!self.delete_server({
 				:name => name,
 				:session => @session,
 				:experiment => @experiment,
 			})
 		rescue Exception => e
+			Sfp::Agent.logger.error "Delete VM [Failed] #{e}\n#{e.backtrace.join("\n")}"
 		end
 		false
 	end

@@ -1,9 +1,6 @@
 require File.expand_path(File.dirname(__FILE__)) + "/../package/package.rb"
 
 class Sfp::Module::Service < Sfp::Module::Package
-	ServiceCommand = (File.exist?('/usr/bin/service') ? '/usr/bin/service' : '/sbin/service') if
-		!const_defined?(:ServiceCommand)
-
 	include Sfp::Resource
 
 	def update_state
@@ -16,23 +13,23 @@ class Sfp::Module::Service < Sfp::Module::Package
 	def self.running?(service)
 		service = service.to_s
 		return false if service.length <= 0
-		data = `#{ServiceCommand} #{service} status 2>/dev/null`.to_s
-		return (not (data =~ /is running/).nil? or not (data =~ /start\/running/).nil?)
+		data = `service #{service} status 2>/dev/null`.to_s.downcase
+		return !!(data =~ /is running/ or data =~ /start\/running/ or data =~ /uptime/)
 	end
 
 	def start(p={})
 		service = @model['service_name'].to_s.strip
 		return false if service.length <= 0
 		return true if Sfp::Module::Service.running?(service)
-		result = `sudo #{ServiceCommand} #{service} start`.to_s.downcase
-		return (result =~ /.*(running|done).*/)
+		system("sudo service #{service} start")
+		return Sfp::Module::Service.running?(service)
 	end
 
 	def stop(p={})
 		service = @model['service_name'].to_s.strip
 		return false if service.length <= 0
 		return true if not Sfp::Module::Service.running?(service)
-		result = `sudo #{ServiceCommand} #{service} stop`.to_s.downcase
-		return (result =~ /.*(stop|done).*/)
+		system("sudo service #{service} stop")
+		return !Sfp::Module::Service.running?(service)
 	end
 end

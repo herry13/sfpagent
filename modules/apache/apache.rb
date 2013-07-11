@@ -51,8 +51,12 @@ class Sfp::Module::Apache < Sfp::Module::Service
 				member = line.strip.split(' ')
 				next if member[1] == nil
 				_, address = member[1].split('http://', 2)
-				agent = agents.select { |k,v| v['address'] == address }
-				members << '$.' + agent.keys.first if agent.length > 0
+				agents.each { |k,v|
+					if v['address'] == address
+						members << '$.' + k
+						break
+					end
+				}
 				#@state['lb_members_address'] << line.strip
 			end
 			members.sort!
