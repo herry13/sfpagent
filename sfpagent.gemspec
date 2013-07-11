@@ -8,7 +8,7 @@ Gem::Specification.new do |s|
 	s.email			= 'herry13@gmail.com'
 
 	s.executables << 'sfpagent'
-	s.files			= `git ls-files`.split("\n").select { |n| !(n =~ /^modules\/.*/) }
+	s.files			= `git ls-files`.split("\n").select { |n| !(n =~ /^(modules|test)\/.*/) }
 
 	s.require_paths = ['lib']
 
