@@ -4,5 +4,7 @@ schema Node {
 	sfpAddress is ""
 	sfpPort is "1314"
 
-	os isa OS
+	os isa OS {
+		running is true
+	}
 }
