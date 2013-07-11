@@ -79,8 +79,10 @@ module Sfp
 					sleep 2
 					url = URI.parse("http://localhost:#{config[:Port]}/pid")
 					http = Net::HTTP.new(url.host, url.port)
-					http.use_ssl = p[:ssl]
-					http.verify_mode = OpenSSL::SSL::VERIFY_NONE
+					if p[:ssl]
+						http.use_ssl = p[:ssl]
+						http.verify_mode = OpenSSL::SSL::VERIFY_NONE
+					end
 					req = Net::HTTP::Get.new(url.path)
 					http.request(req)
 					puts "\nSFP Agent is running with PID #{File.read(PIDFile)}"
