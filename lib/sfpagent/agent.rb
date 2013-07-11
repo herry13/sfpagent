@@ -299,9 +299,13 @@ module Sfp
 			true
 		end
 
-		def self.get_log
+		def self.get_log(n=0)
 			return '' if not File.exist?(LogFile)
-			File.read(LogFile)
+			if n <= 0
+				File.read(LogFile)
+			else
+				`tail -n #{LogFile}`
+			end
 		end
 
 		def self.set_agents(agents)
@@ -376,7 +380,7 @@ module Sfp
 						status, content_type, body = [200, 'application/json', JSON.generate(Sfp::Agent.get_modules)]
 
 					elsif path == '/log'
-						status, content_type, body = [200, 'text/plain', Sfp::Agent.get_log]
+						status, content_type, body = [200, 'text/plain', Sfp::Agent.get_log(50)]
 
 					end
 				end
