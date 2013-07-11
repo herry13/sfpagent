@@ -93,76 +93,6 @@ class Sfp::Module::Apache < Sfp::Module::Service
 		false
 	end
 
-	def enable_load_balancer(p={})
-		begin
-			File.open(InstallingLockFile, 'w') { |f| f.write(' ') }
-			template_file = File.expand_path(File.dirname(__FILE__)) + "/load_balancer"
-			exec_seq 'a2enmod proxy',
-				'a2enmod proxy_balancer',
-				'a2enmod proxy_http',
-				'a2enmod status',
-				"cp -f #{template_file} #{LoadBalancerConfigFile}",
-				"sudo service #{@model['service_name']} stop"
-			return true
-		rescue Exception => e
-			Sfp::Agent.logger.error "#{e}\n#{e.backtrace.join("\n")}"
-		ensure
-			File.delete(InstallingLockFile) if File.exist?(InstallingLockFile)
-		end
-		false
-	end
-
-	def disable_load_balancer(p={})
-		begin
-			File.open(InstallingLockFile, 'w') { |f| f.write(' ') }
-			exec_seq  'a2dismod proxy_balancer',
-				'a2dismod proxy_http',
-				'a2dismod proxy',
-				'a2dismod status',
-				"rm -f #{LoadBalancerConfigFile}",
-				"sudo service #{@model['service_name']} stop"
-			return true
-		rescue Exception => e
-			Sfp::Agent.logger.error "#{e}\n#{e.backtrace.join("\n")}"
-		ensure
-			File.delete(InstallingLockFile) if File.exist?(InstallingLockFile)
-		end
-		false
-	end
-
-	def set_lb_method(p={})
-		return false if ['byrequests', 'bytraffic', 'bybusyness'].index(p['target']).nil?
-		return !!system("sed -i -e 's/^\\s*ProxySet.*lbmethod=.*/ProxySet lbmethod=#{p['target']}/' #{LoadBalancerConfigFile}")
-	end
-
-	def set_members(params={})
-		members = ''
-		reverses = ''
-		params['members'].each do |ref|
-			path = ref.push('address')
-			address = self.get_state(path)
-			members += "\n\tBalancerMember http://#{address}"
-			reverses += "\n\tProxyPassReverse / http://#{address}"
-		end
-		output = ''
-		data = File.read(ConfigFile)
-		data.each_line do |line|
-			xline = line.strip
-			next if xline.length <= 0
-			head, _ = xline.split(' ', 2)
-			next if head == 'BalancerMember' or head == 'ProxyPassReverse'
-			output += "#{line} \n"
-			if head == 'ProxySet'
-				output += "#{members}\n"
-			elsif head == '</Location>'
-				output += "#{reverses}\n"
-			end
-		end
-		File.open(LoadBalancerConfigFile, 'w') { |f| f.write(output) }
-		sleep 1
-		true
-	end
-
 	def set_port(p={})
 		return false if p['target'].nil?
 		port = p['target']
@@ -255,6 +185,100 @@ class Sfp::Module::Apache < Sfp::Module::Service
 			File.delete(NotRunningLockFile) if File.exist?(NotRunningLockFile)
 		end
 		false
+	end
+
+	###
+	# Load Balancer methods
+	###
+	def enable_load_balancer(p={})
+		begin
+			File.open(InstallingLockFile, 'w') { |f| f.write(' ') }
+			template_file = File.expand_path(File.dirname(__FILE__)) + "/load_balancer"
+			exec_seq 'a2enmod proxy',
+				'a2enmod proxy_balancer',
+				'a2enmod proxy_http',
+				'a2enmod status',
+				"cp -f #{template_file} #{LoadBalancerConfigFile}",
+				"sudo service #{@model['service_name']} stop"
+			return true
+		rescue Exception => e
+			Sfp::Agent.logger.error "#{e}\n#{e.backtrace.join("\n")}"
+		ensure
+			File.delete(InstallingLockFile) if File.exist?(InstallingLockFile)
+		end
+		false
+	end
+
+	def disable_load_balancer(p={})
+		begin
+			File.open(InstallingLockFile, 'w') { |f| f.write(' ') }
+			exec_seq  'a2dismod proxy_balancer',
+				'a2dismod proxy_http',
+				'a2dismod proxy',
+				'a2dismod status',
+				"rm -f #{LoadBalancerConfigFile}",
+				"sudo service #{@model['service_name']} stop"
+			return true
+		rescue Exception => e
+			Sfp::Agent.logger.error "#{e}\n#{e.backtrace.join("\n")}"
+		ensure
+			File.delete(InstallingLockFile) if File.exist?(InstallingLockFile)
+		end
+		false
+	end
+
+	def set_lb_method(p={})
+		return false if ['byrequests', 'bytraffic', 'bybusyness'].index(p['target']).nil?
+		return !!system("sed -i -e 's/^\\s*ProxySet.*lbmethod=.*/ProxySet lbmethod=#{p['target']}/' #{LoadBalancerConfigFile}")
+	end
+
+	def set_members(params={})
+		members = ''
+		reverses = ''
+		params['members'].each do |ref|
+			path = ref.push('address')
+			address = self.get_state(path)
+			members += "\n\tBalancerMember http://#{address}"
+			reverses += "\n\tProxyPassReverse / http://#{address}"
+		end
+		output = ''
+		data = File.read(ConfigFile)
+		data.each_line do |line|
+			xline = line.strip
+			next if xline.length <= 0
+			head, _ = xline.split(' ', 2)
+			next if head == 'BalancerMember' or head == 'ProxyPassReverse'
+			output += "#{line} \n"
+			if head == 'ProxySet'
+				output += "#{members}\n"
+			elsif head == '</Location>'
+				output += "#{reverses}\n"
+			end
+		end
+		File.open(LoadBalancerConfigFile, 'w') { |f| f.write(output) }
+		sleep 1
+		true
+	end
+
+	def set_lb_members(p={})
+		agents = Sfp::Agent.get_agents
+		lbmembers = p['members'].map { |m| m.sub! /^\$\./, '' }
+		return false if (lbmembers - agents.keys).length > 0
+		members = reverses = ''
+		lbmembers.each do |m|
+			members += "\n\tBalancerMember http://#{agents[m]['address']}"
+			reverses += "\n\tProxyPassReverse / http://#{agents[m]['address']}"
+		end
+		output = ''
+		File.read(LoadBalancerConfigFile).each_line do |line|
+			head, _ = line.strip.split(' ', 2)
+			next if head == 'BalancerMember' or head == 'ProxyPassReverse'
+			output += "#{line}"
+			output += "#{members}\n" if head == 'ProxySet'
+			output += "#{reverses}\n" if head == '</Location>'
+		end
+		File.open(LoadBalancerConfigFile, 'w') { |f| f.write(output); f.flush }
+		true
 	end
 
 	protected

@@ -137,17 +137,17 @@ schema Apache extends Service {
 		}
 	}
 
-	sub set_members (members isset Machine) {
+	sub set_lb_members (members isset Node) {
 		condition {
 			this.installed = true
 			this.running = false
 			this.is_load_balancer = true
-			foreach (members as m) {
-				m.running = true
-			}
+			//foreach (members as m) {
+			//	m.running = true
+			//}
 		}
 		effect {
-			this.members = members
+			this.lb_members = members
 		}
 	}
 
