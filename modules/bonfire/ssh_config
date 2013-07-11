@@ -1,0 +1,15 @@
+# BonFIRE SSH Gateway
+Host bonfire-gateway
+	Hostname ssh.fr-inria.bonfire-project.eu
+	User <user>
+	ForwardAgent yes
+# BonFIRE WAN IPs:
+Host 172.18.*
+	User root
+	ProxyCommand ssh bonfire-gateway "nc %h %p"
+	StrictHostKeyChecking no
+# BonFIRE Public IPs at INRIA
+Host 131.254.*
+	User root
+	ProxyCommand ssh bonfire-gateway "nc %h %p"
+	StrictHostKeyChecking no
