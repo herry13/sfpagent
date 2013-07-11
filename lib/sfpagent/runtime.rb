@@ -36,11 +36,11 @@ class Sfp::Runtime
 		#
 		def get_module_state(value, root, as_sfp=false)
 			# extract class name
-			class_name = value['_isa'][2, value['_isa'].length]
+			class_name = value['_isa'].sub(/^\$\./, '') # [2, value['_isa'].length]
 
 			# throw an exception if schema's implementation is not exist!
 			raise Exception, "Implementation of schema #{class_name} is not available!" if
-				Sfp::Module.constants.index(class_name.to_sym).nil?
+				Sfp::Module.constants.index(class_name).nil?
 
 			# create an instance of the schema
 			mod = Sfp::Module::const_get(class_name).new
