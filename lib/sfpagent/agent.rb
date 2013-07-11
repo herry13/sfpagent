@@ -213,7 +213,7 @@ module Sfp
 		def self.load_modules(p={})
 			dir = p[:modules_dir]
 
-			logger = (p[:daemon] ? @@logger : Logger.new(STDOUT))
+			logger = @@logger # (p[:daemon] ? @@logger : Logger.new(STDOUT))
 			@@modules = []
 			counter = 0
 			if dir != '' and File.exist?(dir)

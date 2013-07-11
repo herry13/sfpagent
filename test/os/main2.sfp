@@ -1,8 +1,8 @@
 include "node.sfp"
-include "machine.sfp"
+include "os.sfp"
 
 hpvm6 isa Node {
 	sfpAddress is "hpvm6.diy.inf.ed.ac.uk"
 
-	machine isa Machine
+	x isa Machine
 }

@@ -8,17 +8,20 @@ class Sfp::Module::OS
 		@state['running'] = true
 
 		# get memory info
-		mem = `free`
-		mem = mem.split("\n")[1].split(" ")
-		@state["memory_total"] = mem[1].to_i
-		@state["memory_free"] = mem[3].to_i
+		if `which free`.strip != ''
+			mem = `free`.split("\n")[1].split(" ")
+			@state["memory_total"] = mem[1].to_i
+			@state["memory_free"] = mem[3].to_i
+		else
+			@state["memory_total"] = @state["memory_free"] = 0
+		end
 
 		# get platform, architecture, kernel version
 		@state["os"] = `uname -s`.strip
 		@state["version"] = `uname -r`.strip
 		@state["arch"] = `uname -p`.strip
-		@state["platform"] = `cat /etc/issue`.strip
-		@state["cpus"] = `cat /proc/cpuinfo | grep processor | wc -l`.strip.to_i
+		@state["platform"] = (File.exist?('/etc/issue') ? `cat /etc/issue`.strip : '')
+		@state["cpus"] = (File.exist?('/proc/cpuinfo') ? `cat /proc/cpuinfo | grep processor | wc -l`.strip.to_i : 0)
 	end
 
 	def stop

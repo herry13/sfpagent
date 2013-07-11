@@ -1,0 +1,6 @@
+include "node.sfp"
+include "os.sfp"
+
+nena isa Node {
+	x isa OS
+}
