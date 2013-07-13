@@ -256,7 +256,7 @@ module Sfp
 			module_dir = "#{@@config[:modules_dir]}/#{name}"
 			if File.directory? module_dir
 				if `which md5sum`.strip.length > 0
-					return `find #{module_dir} -type f -exec md5sum {} + | awk '{print $1}' | sort | md5sum`.strip
+					return `find #{module_dir} -type f -exec md5sum {} + | awk '{print $1}' | sort | md5sum | awk '{print $1}'`.strip
 				elsif `which md5`.strip.length > 0
 					return `find #{module_dir} -type f -exec md5 {} + | awk '{print $4}' | sort | md5`.strip
 				end
