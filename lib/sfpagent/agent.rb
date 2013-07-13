@@ -105,7 +105,7 @@ module Sfp
 		#
 		def self.stop
 			pid = (File.exist?(PIDFile) ? File.read(PIDFile).to_i : nil)
-			if not pid.nil? and `ps hf #{pid}`.strip =~ /.*sfpagent.*/
+			if not pid.nil? and `ps h #{pid}`.strip =~ /.*sfpagent.*/
 				print "Stopping SFP Agent with PID #{pid} "
 				Process.kill('KILL', pid)
 				puts "[OK]"
@@ -250,8 +250,26 @@ module Sfp
 			JSON.generate(sfp)
 		end
 
+		def self.get_module_hash(name)
+			return nil if @@config[:modules_dir].to_s == ''
+
+			module_dir = "#{@@config[:modules_dir]}/#{name}"
+			if File.directory? module_dir
+				if `which md5sum`.strip.length > 0
+					return `find #{module_dir} -type f -exec md5sum {} + | awk '{print $1}' | sort | md5sum`.strip
+				elsif `which md5`.strip.length > 0
+					return `find #{module_dir} -type f -exec md5 {} + | awk '{print $4}' | sort | md5`.strip
+				end
+			end
+			nil
+		end
+
 		def self.get_modules
-			(defined?(@@modules) and @@modules.is_a?(Array) ? @@modules : [])
+			return [] if not (defined? @@modules and @@modules.is_a? Array)
+			data = {}
+			@@modules.each { |m| data[m] = get_module_hash(m) }
+			data
+			#(defined?(@@modules) and @@modules.is_a?(Array) ? @@modules : [])
 		end
 
 		def self.uninstall_all_modules(p={})
@@ -280,7 +298,7 @@ module Sfp
 		end
 
 		def self.install_module(name, data)
-			return false if @@config[:modules_dir] == ''
+			return false if @@config[:modules_dir].to_s == ''
 
 			if !File.directory? @@config[:modules_dir]
 				File.delete @@config[:modules_dir] if File.exist? @@config[:modules_dir]
