@@ -1,9 +1,9 @@
 Gem::Specification.new do |s|
 	s.name			= 'sfpagent'
-	s.version		= '0.0.1'
+	s.version		= '0.1.0'
 	s.date			= '2013-07-03'
 	s.summary		= 'SFP Agent'
-	s.description	= 'A Ruby gem that provides a Ruby API to an SFP Agent.'
+	s.description	= 'A Ruby gem that provides a script of an SFP Agent.'
 	s.authors		= ['Herry']
 	s.email			= 'herry13@gmail.com'
 

@@ -318,7 +318,7 @@ module Sfp
 			Dir.entries(module_dir).each { |name|
 				next if name == '.' or name == '..'
 				if File.directory? "#{module_dir}/#{name}"
-					system("cd #{module_dir}/#{name}; mv * ..; cd ..; rm -rf #{name}")
+					system("cd #{module_dir}/#{name}; mv * ..; mv .* .. 2>/dev/null; cd ..; rm -rf #{name}")
 				end
 				system("cd #{module_dir}; rm data.tgz")
 			}
