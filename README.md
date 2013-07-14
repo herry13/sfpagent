@@ -6,6 +6,10 @@ SFP Agent for Ruby
 
 A Ruby script and API of an SFP agent. The agent could be accessed through HTTP RESTful API.
 
+With this agent, you could manage a software component such as get the state, install, uninstall, update
+its configuration, etc. Each configuration should be specified in [SFP language](https://github.com/herry13/sfp).
+Every software component could have a set of methods which could be called through HTTP request.
+
 
 To install
 ----------
@@ -16,13 +20,13 @@ As daemon
 ---------
 - start the agent daemon
 
-	$ sfpagent -s
+		$ sfpagent -s
 
-  In default, the agent will listen at port 1314.
+  In default, the agent will listen at port **1314**.
 
 - stop the agent daemon
 
-	$ sfpagent -s
+		$ sfpagent -t
 
 Cached Directory
 ----------------
