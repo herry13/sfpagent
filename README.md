@@ -11,10 +11,20 @@ its configuration, etc. Each configuration should be specified in [SFP language]
 Every software component could have a set of methods which could be called through HTTP request.
 
 
+Requirements
+------------
+- Ruby (>= 1.8.7)
+- Rubygems
+	- sfp (>= 0.3.0)
+	- antlr3
+	- json
+
+
 To install
 ----------
 
 	$ gem install sfpagent
+
 
 As daemon
 ---------
@@ -27,6 +37,7 @@ As daemon
 - stop the agent daemon
 
 		$ sfpagent -t
+
 
 Cached Directory
 ----------------
@@ -57,10 +68,3 @@ HTTP RESTful API
 	- /module : set/replace the module if "module" parameter is specified, or delete the module if the parameter is not exist
 
 
-Requirements
-------------
-- Ruby (>= 1.8.7)
-- Rubygems
-	- sfp (>= 0.3.0)
-	- antlr3
-	- json
