@@ -342,13 +342,13 @@ module Sfp
 				raise Exception, "Invalid agents list." if not agents.is_a?(Hash)
 				buffer = {}
 				agents.each { |name,data|
-					raise Exception "Invalid agents list." if not data.is_a?(Hash) or
-						not data.has_key?('address') or data['address'].to_s.strip == '' or
-						not data.has_key?('port')
+					raise Exception, "Invalid agents list." if not data.is_a?(Hash) or
+						not data.has_key?('sfpAddress') or data['sfpAddress'].to_s.strip == '' or
+						not data.has_key?('sfpPort')
 					buffer[name] = {}
-					buffer[name]['address'] = data['address'].to_s
-					buffer[name]['port'] = data['port'].to_s.strip.to_i
-					buffer[name]['port'] = DefaultPort if buffer[name]['port'] == 0
+					buffer[name]['sfpAddress'] = data['sfpAddress'].to_s
+					buffer[name]['sfpPort'] = data['sfpPort'].to_s.strip.to_i
+					buffer[name]['sfpPort'] = DefaultPort if buffer[name]['sfpPort'] == 0
 				}
 				f.write(JSON.generate(buffer))
 				f.flush
@@ -408,6 +408,9 @@ module Sfp
 					elsif path == '/modules'
 						status, content_type, body = [200, 'application/json', JSON.generate(Sfp::Agent.get_modules)]
 
+					elsif path == '/agents'
+						status, content_type, body = [200, 'application/JSON', JSON.generate(Sfp::Agent.get_agents)]
+
 					elsif path == '/log'
 						status, content_type, body = [200, 'text/plain', Sfp::Agent.get_log(100)]
 
@@ -423,6 +426,8 @@ module Sfp
 			#
 			# uri:
 			#	/execute => receive an action's schema and execute it
+			#	/migrate => SFP object migration
+			#	/duplicate => SFP object duplication
 			#
 			def do_POST(request, response)
 				status = 400
@@ -433,6 +438,14 @@ module Sfp
 					path = (request.path[-1,1] == '/' ? ryyequest.path.chop : request.path)
 					if path == '/execute'
 						status, content_type, body = self.execute({:query => request.query})
+
+					elsif path =~ /\/migrate\/.+/
+						status, content_type, body = self.migrate({:src => path[8, path.length-8],
+						                                           :dest => request.query['destination']})
+
+					elsif path =~ /\/duplicate\/.+/
+						# TODO
+
 					end
 				end
 
@@ -458,13 +471,9 @@ module Sfp
 					if path == '/model'
 						status, content_type, body = self.set_model({:query => request.query})
 
-					elsif path =~ /\/module\/.+/
-						status, content_type, body = self.manage_modules({:name => path[8, path.length-8],
-						                                                 :query => request.query})
-
 					elsif path =~ /\/modules\/.+/
 						status, content_type, body = self.manage_modules({:name => path[9, path.length-9],
-						                                                 :query => request.query})
+						                                                  :query => request.query})
 
 					elsif path == '/modules'
 						status, content_type, body = self.manage_modules({:delete => true})
@@ -478,6 +487,35 @@ module Sfp
 				response.status = status
 				response['Content-Type'] = content_type
 				response.body = body
+			end
+
+			def migrate(p={})
+				# migrate: source path, destination path
+				#@logger.info "migrate #{p[:src]} => #{p[:dest]}"
+				return [400, 'plain/text', 'Destination path should begin with "/"'] if p[:dest].to_s[0,1] != '/'
+				begin
+					# reformat the source and destination paths to SFP reference
+					p[:src] = '$' + p[:src].gsub(/\//, '.')
+					p[:dest] = '$' + p[:dest].gsub(/\//, '.')
+
+					# find the target in agents' database
+					agents = Sfp::Agent.get_agents
+					data = agents.at?(p[:dest])
+					return [404, 'plain/text', 'Unrecognized destination!'] if !data.is_a?(Hash)
+
+					# send the sub-model to destination
+					model = Sfp::Agent.get_model
+					return [404, '', ''] if model.nil?
+					submodel = model.at?(p[:src])
+
+					# TODO
+					# 1. send the configuration to destination
+
+					return [200, 'plain/text', "#{p[:src]} #{p[:dest]}:#{data.inspect}"]
+				rescue Exception => e
+					@logger.error "Migration failed #{e}\n#{e.backtrace.join("\n")}"
+				end
+				return [500, 'plain/text', e.to_s]
 			end
 
 			def manage_agents(p={})
