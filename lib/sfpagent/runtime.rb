@@ -23,20 +23,27 @@ class Sfp::Runtime
 	end
 
 	def get_state(as_sfp=false)
-		def cleanup(value)
+		def cleanup(model)
 			#value.accept(SfpState.new)
 			#value
-			value.select { |k,v| k[0,1] != '_' and !(v.is_a?(Hash) and v['_context'] != 'object') }
+			model.select { |k,v| k[0,1] != '_' and !(v.is_a?(Hash) and v['_context'] != 'object') }
 			#value.keys.each { |k| value[k] = cleanup(value[k]) if value[k].is_a?(Hash) }
 		end
 
+		def add_hidden_attributes(model, state)
+			model.each { |k,v|
+				state[k] = v if (k[0,1] == ')' and k != '_parent') or
+					(v.is_a?(Hash) and v['_context'] == 'procedure')
+			}
+		end
+
 		# Load the implementation of an object, and return its current state
-		# @param value a Hash
+		# @param model a Hash
 		# @return a Hash which is the state of the object
 		#
-		def get_module_state(value, root, as_sfp=false)
+		def instantiate_module(model, root, as_sfp=false)
 			# extract class name
-			class_name = value['_isa'].sub(/^\$\./, '') # [2, value['_isa'].length]
+			class_name = model['_isa'].sub(/^\$\./, '')
 
 			# throw an exception if schema's implementation is not exist!
 			raise Exception, "Implementation of schema #{class_name} is not available!" if
@@ -44,45 +51,54 @@ class Sfp::Runtime
 
 			# create an instance of the schema
 			mod = Sfp::Module::const_get(class_name).new
-			default = cleanup(root.at?(value['_isa']))
-			model = cleanup(value)
-			mod.init(model, default)
-
-			# update and get state
-			mod.update_state
-			state = mod.state
-
-			# insert all hidden attributes, except "_parent"
-			value.each do |k,v|
-				state[k] = v if (k[0,1] == '_' and k != '_parent') or
-					(v.is_a?(Hash) and v['_context'] == 'procedure')
-			end if as_sfp
-			[mod, state]
+			default = cleanup(root.at?(model['_isa']))
+			ruby_model = cleanup(model)
+			mod.init(ruby_model, default)
+			mod
 		end
 
 		# Return the state of an object
 		#
-		def get_object_state(value, root, as_sfp=false)
+		def get_object_state(model, root, as_sfp=false, path='$')
 			modules = {}
 			state = {}
-			if value['_context'] == 'object' and value['_isa'].to_s.isref
-				if value['_isa'] != '$.Object'
-					# if this value is an instance of a subclass of Object, then
+			if model['_context'] == 'object' and model['_isa'].to_s.isref
+				if model['_isa'] != '$.Object'
+					# if this model is an instance of a subclass of Object, then
 					# get the current state of this object
-					modules[:_self], state = get_module_state(value, root, as_sfp)
+					#modules[:_self] = nil
+					mod = (@modules.nil? ? nil : @modules.at?(path))
+					if mod.is_a?(Hash)
+						modules[:_self] = mod[:_self]
+					else
+						# the module has not been instantiated yet!
+						modules[:_self] = instantiate_module(model, root, as_sfp)
+					end
+					# update and get the state
+					modules[:_self].update_state
+					state = modules[:_self].state
+					if !mod.nil? and mod.has_key?(:_vars)
+						state.keep_if { |k,v| mod[:_vars].index(k) }
+						modules[:_vars] = mod[:_vars]
+					else
+						modules[:_vars] = state.keys
+					end
+					# set hidden attributes
+					add_hidden_attributes(model, state) if as_sfp
 				end
 			end
 
 			# get the state for each attributes which are not covered by this
 			# object's module
-			(value.keys - state.keys).each { |key|
+			(model.keys - state.keys).each do |key|
 				next if key[0,1] == '_'
-				if value[key].is_a?(Hash)
-					modules[key], state[key] = get_object_state(value[key], root, as_sfp) if value[key]['_context'] == 'object'
+				if model[key].is_a?(Hash)
+					modules[key], state[key] = get_object_state(model[key], root, as_sfp, path.push(key)) if
+						model[key]['_context'] == 'object'
 				else
 					state[key] = Sfp::Undefined.new
 				end
-			}
+			end
 
 			[modules, state]
 		end
