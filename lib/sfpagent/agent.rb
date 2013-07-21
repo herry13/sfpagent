@@ -187,6 +187,7 @@ module Sfp
 		def self.get_state(as_sfp=true)
 			return nil if !defined?(@@runtime) or @@runtime.nil?
 			begin
+				@@runtime.get_state if @@runtime.modules.nil?
 				return @@runtime.get_state(as_sfp)
 			rescue Exception => e
 				@@logger.error "Get state [Failed] #{e}\n#{e.backtrace.join("\n")}"
