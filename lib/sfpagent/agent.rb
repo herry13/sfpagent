@@ -196,7 +196,8 @@ module Sfp
 		end
 
 		def self.resolve(path, as_sfp=true)
-			return Sfp::Undefined.new if !defined?(@@runtime) or @@runtime.nil?
+			return Sfp::Undefined.new if !defined?(@@runtime) or @@runtime.nil? or
+				@@runtime.modules.nil?
 			begin
 				parent, attribute = path.pop_ref
 				mod = @@runtime.modules.at?(parent)
