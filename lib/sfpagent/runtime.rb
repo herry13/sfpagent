@@ -35,7 +35,7 @@ class Sfp::Runtime
 
 		def add_hidden_attributes(model, state)
 			model.each { |k,v|
-				state[k] = v if (k[0,1] == ')' and k != '_parent') or
+				state[k] = v if (k[0,1] == '_' and k != '_parent') or
 					(v.is_a?(Hash) and v['_context'] == 'procedure')
 			}
 		end
