@@ -2,6 +2,7 @@ require 'etc'
 require 'fileutils'
 
 module Sfp::Resource
+	attr_accessor :parent
 	attr_reader :state, :model
 
 	def init(model, default)
@@ -22,6 +23,10 @@ module Sfp::Resource
 	end
 
 	alias_method :reset, :to_model
+
+	def resolve(path)
+		Sfp::Agent.resolve(path)
+	end
 
 	protected
 	def exec_seq(*commands)

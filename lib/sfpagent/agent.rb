@@ -185,13 +185,29 @@ module Sfp
 		# Return the current state of the model.
 		#
 		def self.get_state(as_sfp=true)
-			return nil if !defined? @@runtime or @@runtime.nil?
+			return nil if !defined?(@@runtime) or @@runtime.nil?
 			begin
 				return @@runtime.get_state(as_sfp)
 			rescue Exception => e
 				@@logger.error "Get state [Failed] #{e}\n#{e.backtrace.join("\n")}"
 			end
 			false
+		end
+
+		def self.resolve(path, as_sfp=true)
+			return Sfp::Undefined.new if !defined?(@@runtime) or @@runtime.nil?
+			begin
+				parent, attribute = path.pop_ref
+				mod = @@runtime.modules.at?(parent)
+				if mod.is_a?(Hash)
+					mod[:_self].update_state
+					state = mod[:_self].state
+					return state[attribute] if state.has_key?(attribute)
+				end
+			rescue Exception => e
+				@@logger.error "Resolve #{path} [Failed] #{e}\n#{e.backtrace.join("\n")}"
+			end
+			Sfp::Undefined.new
 		end
 
 		# Execute an action

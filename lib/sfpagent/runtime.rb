@@ -1,7 +1,10 @@
 class Sfp::Runtime
+	attr_reader :modules
+
 	def initialize(parser)
 		@parser = parser
 		@root = @parser.root
+		@modules = nil
 	end
 
 	def execute_action(action)
@@ -11,7 +14,7 @@ class Sfp::Runtime
 			p
 		end
 
-		self.get_state if not defined? @modules
+		self.get_state if not defined?(@modules) or @modules.nil?
 
 		module_path, method_name = action['name'].pop_ref
 		mod = @modules.at?(module_path)[:_self]
@@ -67,7 +70,7 @@ class Sfp::Runtime
 					# if this model is an instance of a subclass of Object, then
 					# get the current state of this object
 					#modules[:_self] = nil
-					mod = (@modules.nil? ? nil : @modules.at?(path))
+					mod = (!defined?(@modules) or @modules.nil? ? nil : @modules.at?(path))
 					if mod.is_a?(Hash)
 						modules[:_self] = mod[:_self]
 					else
