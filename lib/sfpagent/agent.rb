@@ -200,6 +200,7 @@ module Sfp
 		def self.resolve(path, as_sfp=true)
 			return Sfp::Undefined.new if !defined?(@@runtime) or @@runtime.nil? or @@runtime.modules.nil?
 			begin
+				path = path.simplify
 				_, node, _ = path.split('.', 3)
 				if @@runtime.modules.has_key?(node)
 					# local resolve
