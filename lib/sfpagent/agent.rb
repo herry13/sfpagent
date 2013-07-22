@@ -9,6 +9,8 @@ require 'logger'
 
 module Sfp
 	module Agent
+		NetHelper = Object.new.extend(Nuri::Net::Helper)
+
 		if Process.euid == 0
 			CachedDir = '/var/sfpagent'
 		else
@@ -196,15 +198,30 @@ module Sfp
 		end
 
 		def self.resolve(path, as_sfp=true)
-			return Sfp::Undefined.new if !defined?(@@runtime) or @@runtime.nil? or
-				@@runtime.modules.nil?
+			return Sfp::Undefined.new if !defined?(@@runtime) or @@runtime.nil? or @@runtime.modules.nil?
 			begin
-				parent, attribute = path.pop_ref
-				mod = @@runtime.modules.at?(parent)
-				if mod.is_a?(Hash)
-					mod[:_self].update_state
-					state = mod[:_self].state
-					return state[attribute] if state.has_key?(attribute)
+				_, node, _ = path.split('.', 3)
+				if @@runtime.modules.has_key?(node)
+					# local resolve
+					parent, attribute = path.pop_ref
+					mod = @@runtime.modules.at?(parent)
+					if mod.is_a?(Hash)
+						mod[:_self].update_state
+						state = mod[:_self].state
+						return state[attribute] if state.has_key?(attribute)
+					end
+				else
+					agents = get_agents
+					if agents[node].is_a?(Hash)
+						agent = agents[node]
+						path = path[1, path.length-1].gsub /\./, '/'
+						code, data = NetHelper.get_data(agent['sfpAddress'], agent['sfpPort'], "/state#{path}")
+						if code.to_i == 200
+							state = JSON[data]['state']
+							return Sfp::Unknown.new if state == '<sfp::unknown>'
+							return state if !state.is_a?(String) or state[0,15] != '<sfp::undefined'
+						end
+					end
 				end
 			rescue Exception => e
 				@@logger.error "Resolve #{path} [Failed] #{e}\n#{e.backtrace.join("\n")}"
