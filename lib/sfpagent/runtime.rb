@@ -95,7 +95,7 @@ class Sfp::Runtime
 				if model[key].is_a?(Hash)
 					modules[key], state[key] = get_object_state(model[key], root, as_sfp, path.push(key)) if
 						model[key]['_context'] == 'object'
-					modules[key]['_parent'] = modules
+					modules[key]['_parent'] = modules if modules[key].is_a?(Hash)
 				else
 					state[key] = Sfp::Undefined.new
 				end
