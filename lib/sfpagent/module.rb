@@ -17,6 +17,10 @@ module Sfp::Resource
 		@state = {}
 	end
 
+	def apply(p={})
+		true
+	end
+
 	def to_model
 		@state = {}
 		@model.each { |k,v| @state[k] = v }
