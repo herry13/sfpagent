@@ -29,7 +29,7 @@ module Sfp::Resource
 	alias_method :reset, :to_model
 
 	def resolve(path)
-		Sfp::Agent.resolve(path)
+		Sfp::Agent.resolve(path.simplify)
 	end
 
 	protected

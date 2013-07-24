@@ -27,10 +27,7 @@ class Sfp::Runtime
 
 	def get_state(as_sfp=false)
 		def cleanup(model)
-			#value.accept(SfpState.new)
-			#value
 			model.select { |k,v| k[0,1] != '_' and !(v.is_a?(Hash) and v['_context'] != 'object') }
-			#value.keys.each { |k| value[k] = cleanup(value[k]) if value[k].is_a?(Hash) }
 		end
 
 		def add_hidden_attributes(model, state)
@@ -98,6 +95,7 @@ class Sfp::Runtime
 				if model[key].is_a?(Hash)
 					modules[key], state[key] = get_object_state(model[key], root, as_sfp, path.push(key)) if
 						model[key]['_context'] == 'object'
+					modules[key]['_parent'] = modules if modules[key].is_a?(Hash)
 				else
 					state[key] = Sfp::Undefined.new
 				end
