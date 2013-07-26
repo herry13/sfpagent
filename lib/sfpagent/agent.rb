@@ -30,6 +30,7 @@ module Sfp
 		                                     WEBrick::BasicLog::WARN)
 
 		@@model_lock = Mutex.new
+		@@runtime_lock = Mutex.new
 
 		def self.logger
 			@@logger
@@ -176,7 +177,7 @@ module Sfp
 				@@logger.info "There is no model in cache."
 			else
 				begin
-					@@runtime = Sfp::Runtime.new(model)
+					@@runtime_lock.synchronize { @@runtime = Sfp::Runtime.new(model) }
 					@@logger.info "Reloading the model in cache [OK]"
 				rescue Exception => e
 					@@logger.error "Reloading the model in cache [Failed] #{e}"
@@ -187,41 +188,46 @@ module Sfp
 		# Return the current state of the model.
 		#
 		def self.get_state(as_sfp=true)
-			return nil if !defined?(@@runtime) or @@runtime.nil?
-			begin
-				@@runtime.get_state if @@runtime.modules.nil?
-				return @@runtime.get_state(as_sfp)
-			rescue Exception => e
-				@@logger.error "Get state [Failed] #{e}\n#{e.backtrace.join("\n")}"
-			end
+			@@runtime_lock.synchronize {
+				return nil if !defined?(@@runtime) or @@runtime.nil?
+				begin
+					@@runtime.get_state if @@runtime.modules.nil?
+					return @@runtime.get_state(as_sfp)
+				rescue Exception => e
+					@@logger.error "Get state [Failed] #{e}\n#{e.backtrace.join("\n")}"
+				end
+			}
 			false
 		end
 
 		def self.resolve(path, as_sfp=true)
-			return Sfp::Undefined.new if !defined?(@@runtime) or @@runtime.nil? or @@runtime.modules.nil?
 			begin
-				path = path.simplify
-				_, node, _ = path.split('.', 3)
-				if @@runtime.modules.has_key?(node)
-					# local resolve
-					parent, attribute = path.pop_ref
-					mod = @@runtime.modules.at?(parent)
-					if mod.is_a?(Hash)
-						mod[:_self].update_state
-						state = mod[:_self].state
-						return state[attribute] if state.has_key?(attribute)
-					end
-				else
-					agents = get_agents
-					if agents[node].is_a?(Hash)
-						agent = agents[node]
-						path = path[1, path.length-1].gsub /\./, '/'
-						code, data = NetHelper.get_data(agent['sfpAddress'], agent['sfpPort'], "/state#{path}")
-						if code.to_i == 200
-							state = JSON[data]['state']
-							return Sfp::Unknown.new if state == '<sfp::unknown>'
-							return state if !state.is_a?(String) or state[0,15] != '<sfp::undefined'
+				@@runtime_lock.synchronize {
+					return Sfp::Undefined.new if !defined?(@@runtime) or @@runtime.nil? or @@runtime.modules.nil?
+					path = path.simplify
+					_, node, _ = path.split('.', 3)
+					if @@runtime.modules.has_key?(node)
+						# local resolve
+						parent, attribute = path.pop_ref
+						mod = @@runtime.modules.at?(parent)
+						if mod.is_a?(Hash)
+							mod[:_self].update_state
+							state = mod[:_self].state
+							return state[attribute] if state.has_key?(attribute)
 						end
+						return Sfp::Undefined.new
+					end
+				}
+				agents = get_agents
+				if agents[node].is_a?(Hash)
+					# remote resolve
+					agent = agents[node]
+					path = path[1, path.length-1].gsub /\./, '/'
+					code, data = NetHelper.get_data(agent['sfpAddress'], agent['sfpPort'], "/state#{path}")
+					if code.to_i == 200
+						state = JSON[data]['state']
+						return Sfp::Unknown.new if state == '<sfp::unknown>'
+						return state if !state.is_a?(String) or state[0,15] != '<sfp::undefined'
 					end
 				end
 			rescue Exception => e
