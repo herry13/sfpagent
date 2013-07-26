@@ -1,6 +1,6 @@
-require 'etc'
-require 'fileutils'
-
+#
+# predefined methods: update_state, apply, reset, resolve
+#
 module Sfp::Resource
 	attr_accessor :parent
 	attr_reader :state, :model
