@@ -1,7 +1,7 @@
 Gem::Specification.new do |s|
 	s.name			= 'sfpagent'
-	s.version		= '0.1.1'
-	s.date			= '2013-07-03'
+	s.version		= '0.1.2'
+	s.date			= '2013-08-05'
 	s.summary		= 'SFP Agent'
 	s.description	= 'A Ruby implementation of SFP agent.'
 	s.authors		= ['Herry']
@@ -16,5 +16,5 @@ Gem::Specification.new do |s|
 	s.homepage		= 'https://github.com/herry13/sfpagent'
 	s.rubyforge_project = 'sfpagent'
 
-	s.add_dependency 'sfp', '~> 0.3.0'
+	s.add_dependency 'sfp', '~> 0.3.6'
 end	
