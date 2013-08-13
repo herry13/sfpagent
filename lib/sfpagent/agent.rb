@@ -202,12 +202,12 @@ module Sfp
 
 		def self.resolve(path, as_sfp=true)
 			begin
-				@@runtime_lock.synchronize {
+				#@@runtime_lock.synchronize {
 					return Sfp::Undefined.new if !defined?(@@runtime) or @@runtime.nil? or @@runtime.modules.nil?
 					path = path.simplify
 					_, node, _ = path.split('.', 3)
 					if @@runtime.modules.has_key?(node)
-						# local resolve
+						# local resolve
 						parent, attribute = path.pop_ref
 						mod = @@runtime.modules.at?(parent)
 						if mod.is_a?(Hash)
@@ -217,10 +217,10 @@ module Sfp
 						end
 						return Sfp::Undefined.new
 					end
-				}
+				#}
 				agents = get_agents
 				if agents[node].is_a?(Hash)
-					# remote resolve
+					# remote resolve
 					agent = agents[node]
 					path = path[1, path.length-1].gsub /\./, '/'
 					code, data = NetHelper.get_data(agent['sfpAddress'], agent['sfpPort'], "/state#{path}")
