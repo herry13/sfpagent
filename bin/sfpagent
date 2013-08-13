@@ -4,7 +4,7 @@ libdir = File.expand_path(File.dirname(__FILE__))
 require "#{libdir}/../lib/sfpagent"
 
 opts = Trollop::options do
-	version "sfpagent 0.1.1 (c) 2013 Herry"
+	version "sfpagent 0.1.4 (c) 2013 Herry"
 	banner <<-EOS
 SFP Agent that provides a Ruby framework for managing system configurations. The configurations are modelled in SFP language.
 
