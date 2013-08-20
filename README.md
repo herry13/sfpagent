@@ -1,7 +1,7 @@
 SFP Agent for Ruby
 ==================
 - Author: Herry (herry13@gmail.com)
-- Version: 0.1.4
+- [Version](https://github.com/herry13/sfpagent/blob/master/VERSION)
 - License: [BSD License](https://github.com/herry13/sfpagent/blob/master/LICENSE)
 
 A Ruby script and API of an SFP agent. The agent could be accessed through HTTP RESTful API.

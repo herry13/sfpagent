@@ -1,6 +1,6 @@
 Gem::Specification.new do |s|
 	s.name			= 'sfpagent'
-	s.version		= '0.1.4'
+	s.version		= File.read(File.join(File.dirname(__FILE__), 'VERSION')).sub(/\n/, '')
 	s.date			= '2013-08-13'
 	s.summary		= 'SFP Agent'
 	s.description	= 'A Ruby implementation of SFP agent.'
@@ -16,5 +16,5 @@ Gem::Specification.new do |s|
 	s.homepage		= 'https://github.com/herry13/sfpagent'
 	s.rubyforge_project = 'sfpagent'
 
-	s.add_dependency 'sfp', '~> 0.3.6'
+	s.add_dependency 'sfp', '~> 0.3.9'
 end	
