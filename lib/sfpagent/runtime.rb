@@ -4,6 +4,7 @@ class Sfp::Runtime
 	attr_reader :modules
 
 	def initialize(parser)
+		@mutex_procedure = Mutex.new
 		@parser = parser
 		@root = @parser.root
 		@modules = nil
@@ -25,7 +26,7 @@ class Sfp::Runtime
 
 		params = normalise_parameters(action['parameters'])
 		if mod.synchronized.has_key?(method_name)
-			mod.synchronized[method_name].synchronized {
+			mod.synchronized[method_name].synchronize {
 				mod.send method_name.to_sym, params
 			}
 		else
@@ -68,7 +69,7 @@ class Sfp::Runtime
 			# update synchronized list of procedures
 			model.each { |k,v|
 				next if k[0,1] == '_' or not (v.is_a?(Hash) and v['_context'] == 'procedure')
-				mod.synchronized[k] = Mutex.new
+				mod.synchronized[k] = @mutex_procedure if v['_synchronized']
 			}
 Sfp::Agent.logger.info mod.synchronized.inspect
 
