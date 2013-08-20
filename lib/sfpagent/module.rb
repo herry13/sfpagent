@@ -10,7 +10,7 @@ module Sfp::Resource
 		model.each { |k,v| @model[k] = v }
 		@state = {}
 		@default = {}
-		@synchronized = {}
+		@synchronized = []
 	end
 
 	def update_state
