@@ -3,10 +3,9 @@ require 'thread'
 class Sfp::Runtime
 	attr_reader :modules
 
-	def initialize(parser)
+	def initialize(model)
 		@mutex_procedure = Mutex.new
-		@parser = parser
-		@root = @parser.root
+		@root = model
 		@modules = nil
 	end
 
@@ -122,15 +121,16 @@ class Sfp::Runtime
 		end
 
 		root = Sfp::Helper.deep_clone(@root)
-		root.accept(Sfp::Visitor::ParentEliminator.new)
+		root.accept(ParentEliminator)
 		@modules, state = get_object_state(root, root, as_sfp)
-
 		@modules.accept(ParentGenerator)
 
 		state
 	end
 
 	protected
+	ParentEliminator = Sfp::Visitor::ParentEliminator.new
+
 	ParentGenerator = Object.new
 	def ParentGenerator.visit(name, value, parent)
 		value['_parent'] = parent if value.is_a?(Hash)
