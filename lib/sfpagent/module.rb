@@ -2,7 +2,7 @@
 # predefined methods: update_state, apply, reset, resolve
 #
 module Sfp::Resource
-	attr_accessor :parent
+	attr_accessor :parent, :synchronized
 	attr_reader :state, :model
 
 	def init(model, default)
@@ -10,7 +10,7 @@ module Sfp::Resource
 		model.each { |k,v| @model[k] = v }
 		@state = {}
 		@default = {}
-		#default.each { |k,v| @state[k] = @default[k] = v }
+		@synchronized = {}
 	end
 
 	def update_state

@@ -1,3 +1,5 @@
+require 'thread'
+
 class Sfp::Runtime
 	attr_reader :modules
 
@@ -22,7 +24,15 @@ class Sfp::Runtime
 		raise Exception, "Cannot execute #{action['name']}!" if not mod.respond_to?(method_name)
 
 		params = normalise_parameters(action['parameters'])
-		mod.send method_name.to_sym, params
+		if mod.synchronized.has_key?(method_name)
+			mod.synchronized[method_name].synchronized {
+				mod.send method_name.to_sym, params
+			}
+		else
+			mod.send method_name.to_sym, params
+		end
+
+		# TODO - check post-execution state for verification
 	end
 
 	def get_state(as_sfp=false)
@@ -54,6 +64,15 @@ class Sfp::Runtime
 			default = cleanup(root.at?(model['_isa']))
 			ruby_model = cleanup(model)
 			mod.init(ruby_model, default)
+
+			# update synchronized list of procedures
+			model.each { |k,v|
+				next if k[0,1] == '_' or not (v.is_a?(Hash) and v['_context'] == 'procedure')
+				mod.synchronized[k] = Mutex.new
+			}
+Sfp::Agent.logger.info mod.synchronized.inspect
+
+			# return the object instant
 			mod
 		end
 
@@ -113,42 +132,11 @@ class Sfp::Runtime
 		state
 	end
 
-	def execute_plan(plan)
-		plan = JSON[plan]
-		if plan['type'] == 'sequential'
-			execute_sequential_plan(plan)
-		else
-			raise Exception, "Not implemented yet!"
-		end
-	end
-
 	protected
-	class SfpState
-		def visit(name, value, parent)
-			parent.delete(name) if name[0,1] == '_' or
-				(value.is_a?(Hash) and value['_context'] != 'object')
-			true
-		end
-	end
-
 	ParentGenerator = Object.new
 	def ParentGenerator.visit(name, value, parent)
 		value['_parent'] = parent if value.is_a?(Hash)
 		true
 	end
 
-	def execute_sequential_plan(plan)
-		puts 'Execute a sequential plan...'
-
-		plan['workflow'].each_index { |index|
-			action = plan['workflow'][index]
-			print "#{index+1}) #{action['name']} "
-			if not execute_action(action)
-				puts '[Failed]'
-				return false
-			end
-			puts '[OK]'
-		}
-		true
-	end
 end
