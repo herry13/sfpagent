@@ -16,6 +16,7 @@ EOS
 
 	opt :start, "Start the agent. If --daemon option is set true, then the agent will start as a daemon."
 	opt :stop, "Stop the daemon agent."
+	opt :restart, "Restart the daemon agent."
 	opt :status, "Print the status of the daemon agent."
 	opt :state, "Given a model, print the state of all modules. (Note: [model-file] should be specified.)"
 	opt :execute, "Given a model, execute a plan in given file. (Note: [model-file] should be specified.)"
@@ -43,6 +44,10 @@ if opts[:start]
 
 elsif opts[:stop]
 	Sfp::Agent.stop
+
+elsif opts[:restart]
+	Sfp::Agent.stop
+	Sfp::Agent.start(opts)
 
 elsif opts[:status]
 	Sfp::Agent.status
