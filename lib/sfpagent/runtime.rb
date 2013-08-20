@@ -25,7 +25,7 @@ class Sfp::Runtime
 		raise Exception, "Cannot execute #{action['name']}!" if not mod.respond_to?(method_name)
 
 		params = normalise_parameters(action['parameters'])
-		if mod.synchronized.has_key?(method_name)
+		if mod.synchronized.rindex(method_name)
 			@mutex_procedure.synchronize { mod.send method_name.to_sym, params }
 		else
 			mod.send method_name.to_sym, params
