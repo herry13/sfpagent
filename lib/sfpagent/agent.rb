@@ -6,6 +6,7 @@ require 'thread'
 require 'uri'
 require 'net/http'
 require 'logger'
+require 'json'
 
 module Sfp
 	module Agent
@@ -242,12 +243,13 @@ module Sfp
 		#
 		def self.execute_action(action)
 			logger = (@@config[:daemon] ? @@logger : Logger.new(STDOUT))
+			action_string = "#{action['name']} #{JSON.generate(action['parameters']}"
 			begin
 				result = @@runtime.execute_action(action)
-				logger.info "Executing #{action['name']} " + (result ? "[OK]" : "[Failed]")
+				logger.info "Executing #{action_string} " + (result ? "[OK]" : "[Failed]")
 				return result
 			rescue Exception => e
-				logger.info "Executing #{action['name']} [Failed] #{e}\n#{e.backtrace.join("\n")}"
+				logger.info "Executing #{action_string} [Failed] #{e}\n#{e.backtrace.join("\n")}"
 				logger.error "#{e}\n#{e.bracktrace.join("\n")}"
 			end
 			false
