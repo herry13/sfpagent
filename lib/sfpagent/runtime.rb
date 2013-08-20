@@ -69,7 +69,6 @@ class Sfp::Runtime
 				next if k[0,1] == '_' or not (v.is_a?(Hash) and v['_context'] == 'procedure')
 				mod.synchronized << k if v['_synchronized']
 			}
-Sfp::Agent.logger.info mod.synchronized.inspect
 
 			# return the object instant
 			mod
