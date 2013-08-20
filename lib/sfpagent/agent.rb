@@ -263,26 +263,25 @@ module Sfp
 		def self.load_modules(p={})
 			dir = p[:modules_dir]
 
-			logger = @@logger # (p[:daemon] ? @@logger : Logger.new(STDOUT))
 			@@modules = []
 			counter = 0
 			if dir != '' and File.exist?(dir)
-				logger.info "Modules directory: #{dir}"
+				@logger.info "Modules directory: #{dir}"
 				Dir.entries(dir).each { |name|
 					next if name == '.' or name == '..' or File.file?("#{dir}/#{name}")
 					module_file = "#{dir}/#{name}/#{name}.rb"
 					next if not File.exist?(module_file)
 					begin
 						load module_file #require module_file
-						logger.info "Loading module #{dir}/#{name} [OK]"
+						@logger.info "Loading module #{dir}/#{name} [OK]"
 						counter += 1
 						@@modules << name
 					rescue Exception => e
-						logger.warn "Loading module #{dir}/#{name} [Failed]\n#{e}"
+						@logger.warn "Loading module #{dir}/#{name} [Failed]\n#{e}"
 					end
 				}
 			end
-			logger.info "Successfully loading #{counter} modules."
+			@logger.info "Successfully loading #{counter} modules."
 		end
 
 		def self.get_schemata(module_name)
