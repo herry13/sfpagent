@@ -23,6 +23,7 @@ module Sfp
 		PIDFile = "#{CachedDir}/sfpagent.pid"
 		LogFile = "#{CachedDir}/sfpagent.log"
 		ModelFile = "#{CachedDir}/sfpagent.model"
+		BSigFile = "#{CachedDir}/bsig.model"
 		AgentsDataFile = "#{CachedDir}/sfpagent.agents"
 
 		@@logger = WEBrick::Log.new(LogFile, WEBrick::BasicLog::INFO ||
@@ -30,8 +31,11 @@ module Sfp
 		                                     WEBrick::BasicLog::FATAL ||
 		                                     WEBrick::BasicLog::WARN)
 
+		@@bsig = nil
+
 		@@model_lock = Mutex.new
 		@@runtime_lock = Mutex.new
+		@@bsig_lock = Mutex.new
 
 		def self.logger
 			@@logger
@@ -92,15 +96,25 @@ module Sfp
 						http.request(req)
 						puts "\nSFP Agent is running with PID #{File.read(PIDFile)}" if File.exist?(PIDFile)
 					rescue Exception => e
-						Sfp::Agent.logger.warn "Cannot request /pid #{e}"
+						Sfp::Agent.logger.warn "Cannot request /pid #{e}\n#{e.backtrace.join("\n")}"
 					end
 				}
 
-				trap('INT') { server.shutdown }
+				bsig_main = Object.new
+				bsig_main.extend(Sfp::BSig::Main)
+
+				Thread.new {
+					bsig_main.execute_model()
+				}
+
+				trap('INT') {
+					server.shutdown
+					bsig_main.shutdown
+				}
 
 				server.start
 			rescue Exception => e
-				@@logger.error "Starting the agent [Failed] #{e}"
+				@@logger.error "Starting the agent [Failed] #{e}\n#{e.backtrace.join("\n")}"
 				raise e
 			end
 		end
@@ -151,7 +165,7 @@ module Sfp
 				@@logger.info "Setting the model [OK]"
 				return true
 			rescue Exception => e
-				@@logger.error "Setting the model [Failed] #{e}"
+				@@logger.error "Setting the model [Failed] #{e}\n#{e.backtrace.join("\n")}"
 			end
 			false
 		end
@@ -165,7 +179,47 @@ module Sfp
 					return JSON[File.read(ModelFile)]
 				}
 			rescue Exception => e
-				@@logger.error "Get the model [Failed] #{e}\n#{e.backtrace}"
+				@@logger.error "Get the model [Failed] #{e}\n#{e.backtrace.join("\n")}"
+			end
+			false
+		end
+
+		# Setting a new BSig model: set @@bsig variable, and save in cached file
+		#
+		def self.set_bsig(bsig)
+			begin
+				@@bsig_lock.synchronize {
+					@@logger.info "Setting the BSig model [Wait]"
+					if bsig.nil?
+						File.delete(BSigFile) if File.exist?(BSigFile)
+					else
+						File.open(BSigFile, 'w', 0600) { |f|
+							f.write(JSON.generate(bsig))
+							f.flush
+						}
+					end
+					@@bsig = bsig
+				}
+				@@logger.info "Setting the BSig model [OK]"
+				return true
+			rescue Exception => e
+				@@logger.error "Setting the BSig model [Failed] #{e}\n#{e.backtrace.join("\n")}"
+			end
+			false
+		end
+
+		# Return a BSig model from cached file
+		#
+		def self.get_bsig
+			return @@bsig if !@@bsig.nil?
+			return nil if not File.exist?(BSigFile)
+			begin
+				@@bsig_lock.synchronize {
+					@@bsig = JSON[File.read(BSigFile)]
+					return @@bsig
+				}
+			rescue Exception => e
+				@@logger.error "Get the BSig model [Failed] #{e}\n#{e.backtrace.join("\n")}"
 			end
 			false
 		end
@@ -181,7 +235,7 @@ module Sfp
 					@@runtime_lock.synchronize { @@runtime = Sfp::Runtime.new(model) }
 					@@logger.info "Reloading the model in cache [OK]"
 				rescue Exception => e
-					@@logger.error "Reloading the model in cache [Failed] #{e}"
+					@@logger.error "Reloading the model in cache [Failed] #{e}\n#{e.backtrace.join("\n")}"
 				end
 			end
 		end
@@ -249,8 +303,7 @@ module Sfp
 				logger.info "Executing #{action_string} " + (result ? "[OK]" : "[Failed]")
 				return result
 			rescue Exception => e
-				logger.info "Executing #{action_string} [Failed] #{e}\n#{e.backtrace.join("\n")}"
-				logger.error "#{e}\n#{e.bracktrace.join("\n")}"
+				logger.error "Executing #{action_string} [Failed] #{e}\n#{e.backtrace.join("\n")}"
 			end
 			false
 		end
@@ -445,6 +498,9 @@ module Sfp
 					elsif path == '/model'
 						status, content_type, body = get_model
 
+					elsif path == '/bsig'
+						status, content_Type, body = get_bsig
+
 					elsif path =~ /^\/schemata\/.+/
 						status, content_type, body = get_schemata({:module => path[10, path.length-10]})
 
@@ -523,6 +579,9 @@ module Sfp
 
 					elsif path == '/agents'
 						status, content_type, body = self.manage_agents({:query => request.query})
+
+					elsif path == '/bsig'
+						status, content_type, body = self.set_bsig({:query => request.query})
 
 					end
 				end
@@ -614,11 +673,11 @@ module Sfp
 			end
 
 			def set_model(p={})
-				if p[:query].has_key?('model')
-					# Setting the model was success, and then return '200' status.
+				if p[:query] and p[:query].has_key?('model')
+					# If setting the model was success, then return '200' status.
 					return [200, '', ''] if Sfp::Agent.set_model(JSON[p[:query]['model']])
 				else
-					# Remove the existing model by setting an empty model
+					# Removing the existing model by setting an empty model, if it's success then return '200' status.
 					return [200, '', ''] if Sfp::Agent.set_model({})
 				end
 
@@ -632,7 +691,7 @@ module Sfp
 				# The model is not exist.
 				return [404, '', ''] if model.nil?
 
-				# The model is exist, and then send the model in JSON.
+				# The model is exist, and then send it in JSON.
 				return [200, 'application/json', JSON.generate(model)] if !!model
 
 				# There is an error when retrieving the model!
@@ -654,6 +713,31 @@ module Sfp
 					return [200, '', $$.to_s]
 				rescue Exception
 				end
+				[500, '', '']
+			end
+
+			def set_bsig(p={})
+				if p[:query] and p[:query].has_key?('bsig')
+					# If setting the BSig model was success, then return '200' status
+					return [200, '', ''] if Sfp::Agent.set_bsig(JSON[p[:query]['bsig']])
+				else
+					# Deleting the existing BSig model by setting with Nil, if it's success then return '200' status.
+					return [200, '', ''] if Sfp::Agent.set_bsig(nil)
+				end
+
+				# There is an error on setting/deleting the BSig model
+				[500, '', '']
+			end
+
+			def get_bsig(p={})
+				bsig = Sfp::Agent.get_bsig
+
+				# The BSig model is not exist
+				return [404, '', ''] if bsig.nil?
+
+				# The BSig model is exist, and then send it in JSON
+				return [200, 'application/json', JSON.generate(bsig)] if !!bsig
+
 				[500, '', '']
 			end
 
