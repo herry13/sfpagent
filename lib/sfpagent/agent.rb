@@ -240,6 +240,11 @@ module Sfp
 			end
 		end
 
+		def self.whoami?
+			return nil if @@runtime.nil?
+			@@runtime.whoami?
+		end
+
 		# Return the current state of the model.
 		#
 		def self.get_state(as_sfp=true)

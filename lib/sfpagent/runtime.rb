@@ -128,6 +128,11 @@ class Sfp::Runtime
 		state
 	end
 
+	def whoami?
+		@root.each_keys { |key| return key if key[0,1] != '_' } if !@root.nil?
+		nil
+	end
+
 	protected
 	ParentEliminator = Sfp::Visitor::ParentEliminator.new
 
