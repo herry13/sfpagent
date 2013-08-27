@@ -1,43 +1,47 @@
 require 'thread'
 
-module Sfp::BSig
+class Sfp::BSig
+	include Nuri::Net::Helper
+
 	BSigSleepTime = 5
 	SatisfierPath = '/bsig/satisfier'
 	MaxTries = 5
 
 	attr_accessor :enabled
 
+	def initialize
+		@lock = Mutex.new
+		@enabled = true
+	end
+
 	def stop
 		@enabled = false
 	end
 
 	def start
-		return if @enabled
-
 		['INT', 'KILL', 'HUP'].each { |signal|
 			trap(signal) {
 				Sfp::Agent.logger.info "Shutting down BSig engine"
-				@enabled = false
+				stop
 			}
 		}
 
-		@enabled = true
-		Sfp::Agent.logger.info "Starting BSig engine [OK]"
+		Sfp::Agent.logger.info "[Main] Starting BSig engine [OK]"
 
 		while @enabled
 			begin
 				self.execute_model
 			rescue Exception => e
-				Sfp::Agent.logger.error "Error on executing BSig model #{e}\n#{e.backtrace.join("\n")}"
+				Sfp::Agent.logger.error "[Main] Error on executing BSig model #{e}\n#{e.backtrace.join("\n")}"
 			end
 		end
 
-		Sfp::Agent.logger.info "BSig engine has stopped."
+		Sfp::Agent.logger.info "[Main] BSig engine has stopped."
 	end
 
 	def execute_model
 		while @enabled
-			Sfp::Agent.logger.info "Sfp::BSig enabled"
+			Sfp::Agent.logger.info "[Main] Sfp::BSig enabled"
 
 			wait_for_satisfier?
 
@@ -46,9 +50,9 @@ module Sfp::BSig
 				sleep BSigSleepTime
 			else
 				status = achieve_local_goal(bsig['id'], bsig['goal'], bsig['operators'], 1)
-Sfp::Agent.logger.info "execute model - status: " + status.to_s
+Sfp::Agent.logger.info "[Main] execute model - status: " + status.to_s
 				if status == :failure
-					Sfp::Agent.logger.error "Executing BSig model [Failed]"
+					Sfp::Agent.logger.error "[Main] Executing BSig model [Failed]"
 					sleep BSigSleepTime
 				elsif status == :no_flaw
 					sleep BSigSleepTime
@@ -82,7 +86,7 @@ Sfp::Agent.logger.info "Flaws: #{JSON.generate(flaws)}"
 
 Sfp::Agent.logger.info "Selected operator: #{JSON.generate(operator)}"
 
-		operator['selected'] = true
+		@lock.synchronize { operator['selected'] = true }
 		next_pi = pi + 1
 		pre_local, pre_remote = split_preconditions(operator)
 
@@ -114,7 +118,7 @@ Sfp::Agent.logger.info "status local: " + status.to_s
 		:repaired
 
 	ensure
-		operator['selected'] = false if not operator.nil?
+		@lock.synchronize { operator['selected'] = false } if not operator.nil?
 	end
 
 	def achieve_remote_goal(id, goal, pi)
@@ -131,10 +135,9 @@ Sfp::Agent.logger.info "status local: " + status.to_s
 	def receive_goal_from_agent(id, goal, pi)
 		return false if not @enabled
 
-Sfp::Agent.logger.info "receive_goal_from_agent - " + id.inspect + " - " + goal.inspect + " - " + pi.inspect
 		bsig = Sfp::Agent.get_bsig
-Sfp::Agent.logger.info "receive_goal_from_agent - " + id.inspect + " - " + goal.inspect + " - " + pi.inspect
-Sfp::Agent.logger.info bsig.inspect
+#Sfp::Agent.logger.info "[Satisfier] receive_goal_from_agent - " + id.inspect + " - " + goal.inspect + " - " + pi.inspect
+#Sfp::Agent.logger.info bsig.inspect
 
 		return false if bsig.nil? or id < bsig['id']
 
@@ -176,7 +179,7 @@ Sfp::Agent.logger.info bsig.inspect
 		        'goal' => JSON.generate(g),
 		        'pi' => pi}
 		code, _ = put_data(agent['sfpAddress'], agent['sfpPort'], SatisfierPath, data)
-Sfp::Agent.logger.info "send_goal_to_agent - status: " + code.to_s
+#Sfp::Agent.logger.info "send_goal_to_agent - status: " + code.to_s
 		(code == '200')
 	end
 

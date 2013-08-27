@@ -84,9 +84,7 @@ module Sfp
 				server = WEBrick::HTTPServer.new(config)
 				server.mount("/", Sfp::Agent::Handler, Sfp::Agent.logger)
 
-				@@bsig_engine = Object.new
-				@@bsig_engine.extend(Sfp::BSig)
-				@@bsig_engine.extend(Nuri::Net::Helper)
+				@@bsig_engine = Sfp::BSig.new
 
 				['INT', 'KILL', 'HUP'].each { |signal|
 					trap(signal) {
@@ -100,9 +98,9 @@ module Sfp
 
 				# start BSig main thread
 				bsig_pid = fork { @@bsig_engine.start }
+
 				puts "BSig Engine is running with PID #{bsig_pid}"
 				File.open(BSigPIDFile, 'w') { |f| f.write(bsig_pid.to_s) }
-				@@bsig_engine.enabled = true
 
 				# send request to save PID
 				uri = URI.parse("http://127.0.0.1:#{config[:Port]}/pid")
@@ -532,9 +530,6 @@ module Sfp
 					if path == '/pid' and (request.peeraddr[2] == 'localhost' or request.peeraddr[3] == '127.0.0.1')
 						status, content_type, body = save_pid
 
-					elsif path == '/bsig/start' and (request.peeraddr[2] == 'localhost' or request.peeraddr[3] == '127.0.0.1')
-						status, content_type, body = start_bsig
-
 					elsif path == '/state'
 						status, content_type, body = get_state
 
@@ -637,6 +632,12 @@ module Sfp
 
 					elsif path == '/bsig/satisfier'
 						status, content_type, body = self.satisfy_bsig_request({:query => request.query})
+
+					elsif path == '/bsig/activate'
+						status, content_type, body = self.activate_bsig(true)
+
+					elsif path == '/bsig/deactivate'
+						status, content_type, body = self.activate_bsig(false)
 
 					end
 				end
@@ -796,26 +797,30 @@ module Sfp
 				[500, '', '']
 			end
 
-			def start_bsig(p={})
-				return [200, '', ''] if Sfp::Agent.start_bsig
-
-				return [500, '', '']
-			end
-
 			def satisfy_bsig_request(p={})
-Sfp::Agent.logger.info p.inspect
 				if p[:query]
 					bsig_engine = Sfp::Agent.bsig_engine
-					return [404, '', ''] if bsig_engine.nil?
+					return [500, '', ''] if bsig_engine.nil?
 
-Sfp::Agent.logger.info bsig_engine.to_s + " :: " + bsig_engine.enabled.to_s
+					activate_bsig(true) if bsig_engine.enabled.nil?
 					req = p[:query]
-					if not bsig_engine.nil?
-						[500, '', ''] if not bsig_engine.receive_goal_from_agent(req['id'], JSON[req['goal']], req['pi'])
+					if bsig_engine.receive_goal_from_agent(req['id'].to_i, JSON[req['goal']], req['pi'].to_i)
+						return [200, '', '']
 					end
+					[500, '', '']
+				else
+					[400, '', '']
 				end
+			end
 
-				[200, '', '']
+			def activate_bsig(enabled)
+				bsig_engine = Sfp::Agent.bsig_engine
+				if bsig_engine.nil?
+					[500, '', '']
+				else
+					bsig_engine.enabled = enabled
+					[200, '', '']
+				end
 			end
 
 			def trusted(address)
