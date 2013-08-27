@@ -4,6 +4,8 @@ SFP Agent for Ruby
 - [Version](https://github.com/herry13/sfpagent/blob/master/VERSION)
 - License: [BSD License](https://github.com/herry13/sfpagent/blob/master/LICENSE)
 
+[![Gem Version](https://badge.fury.io/rb/sfpagent.png)](http://badge.fury.io/rb/sfpagent)
+
 A Ruby script and API of an SFP agent. The agent could be accessed through HTTP RESTful API.
 
 With this agent, you could manage a software component such as get the state, install, uninstall, update
