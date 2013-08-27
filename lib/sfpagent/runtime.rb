@@ -129,7 +129,7 @@ class Sfp::Runtime
 	end
 
 	def whoami?
-		@root.each_key { |key| return key if key[0,1] != '_' } if !@root.nil?
+		@root.each { |key,value| return key if key[0,1] != '_' and value['_context'] == 'object' } if !@root.nil?
 		nil
 	end
 

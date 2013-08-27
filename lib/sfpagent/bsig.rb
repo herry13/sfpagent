@@ -42,8 +42,8 @@ module Sfp::BSig
 				status = achieve_local_goal(bsig['version'], bsig['goal'], bsig['operators'], 1)
 Sfp::Agent.logger.info "execute model - status: " + status.to_s
 				if status == :failure
-					#@enabled = false
 					Sfp::Agent.logger.error "Executing BSig model [Failed]"
+					sleep BSigSleepTime
 				elsif status == :no_flaw
 					sleep BSigSleepTime
 				end
@@ -62,41 +62,53 @@ Sfp::Agent.logger.info "execute model - status: " + status.to_s
 	# :ongoing   : the selected operator is being executed
 	# :repaired  : some goal-flaws have been repaired, but the goal may have other flaws
 	def achieve_local_goal(version, goal, operators, pi)
+		operator = nil
+
 		current = get_current_state
 		flaws = compute_flaws(goal, current)
 		return :no_flaw if flaws.length <= 0
-puts "Flaws: #{JSON.generate(flaws)}"
+Sfp::Agent.logger.info "Flaws: #{JSON.generate(flaws)}"
 
 		operator = select_operator(flaws, operators, pi)
 		return :failure if operator.nil?
 
 		return :ongoing if operator['selected']
 
-puts "Selected operator: #{JSON.generate(operator)}"
+Sfp::Agent.logger.info "Selected operator: #{JSON.generate(operator)}"
 
 		operator['selected'] = true
 		next_pi = pi + 1
 		pre_local, pre_remote = split_preconditions(operator)
 
-#puts "local: #{JSON.generate(pre_local)}"
-#puts "remote: #{JSON.generate(pre_remote)}"
+Sfp::Agent.logger.info "local: #{JSON.generate(pre_local)}"
+Sfp::Agent.logger.info "remote: #{JSON.generate(pre_remote)}"
 
 		status = nil
-		1.upto(MaxTries) do |i|
+		tries = MaxTries
+		begin
 			status = achieve_local_goal(version, pre_local, operators, next_pi)
-			break if status == :no_flaw or status == :failure or not @enabled
-		end
-#Sfp::Agent.logger.info "status local: " + status.to_s
-		
-		if status == :failure or
-		 achieve_remote_goal(version, pre_remote, next_pi) == :failure or
-		 not invoke(operator)
-			operator['selected'] = false
-			return :failure
-		end
+			if status == :no_flaw or status == :failure or not @enabled
+				break
+			elsif status == :ongoing
+				sleep BSigSleepTime
+				tries += 1
+			elsif status == :repaired
+				tries = MaxTries
+			end
+			tries -= 1
+		end until tries <= 0
 
-		operator['selected'] = false
-		return :repaired
+Sfp::Agent.logger.info "status local: " + status.to_s
+		return :failure if status == :failure
+
+		return :failure if not achieve_remote_goal(version, pre_remote, next_pi)
+
+		return :failure if not invoke(operator)
+		
+		:repaired
+
+	ensure
+		operator['selected'] = false if not operator.nil?
 	end
 
 	def achieve_remote_goal(version, goal, pi)
@@ -116,18 +128,24 @@ puts "Selected operator: #{JSON.generate(operator)}"
 		bsig = Sfp::Agent.get_bsig
 		return false if bsig.nil? or version < bsig['version']
 
-		loop do
-			case achieve_local_goal(bsig['version'], goal, bsig['operators'], pi)
-			when :failure
-				return false
-			when :no_flaw
-				return true
+		status = nil
+		tries = MaxTries
+		begin
+			status = achieve_local_goal(bsig['version'], goal, bsig['operators'], pi)
+			if status == :no_flaw or status == :failure or not @enabled
+				break
+			elsif status == :ongoing
+				sleep BSigSleepTime
+				tries += 1
+			elsif status == :repaired
+				tries = MaxTries
 			end
-		end
-	end
+			tries -= 1
+		end until tries <= 0
 
-	def shutdown
-		@enabled = false
+		return false if status == :failure
+
+		true
 	end
 
 	protected
@@ -200,7 +218,7 @@ puts "Selected operator: #{JSON.generate(operator)}"
 			myself = Sfp::Agent.whoami?
 			operator['condition'].each { |var,val|
 				_, agent_name, _ = var.split('.', 3)
-				if agent_name = myself
+				if agent_name == myself
 					local[var] = val
 				else
 					remote[var] = val

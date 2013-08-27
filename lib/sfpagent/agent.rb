@@ -86,6 +86,7 @@ module Sfp
 
 				@@bsig_engine = Object.new
 				@@bsig_engine.extend(Sfp::BSig)
+				@@bsig_engine.extend(Nuri::Net::Helper)
 
 				['INT', 'KILL', 'HUP'].each { |signal|
 					trap(signal) {
@@ -154,6 +155,10 @@ module Sfp
 			else
 				puts "BSig engine is not running."
 			end
+		end
+
+		def self.bsig_engine
+			@@bsig_engine
 		end
 
 		# Print the status of the agent.
@@ -629,6 +634,9 @@ module Sfp
 					elsif path == '/bsig'
 						status, content_type, body = self.set_bsig({:query => request.query})
 
+					elsif path == '/bsig/satisfier'
+						status, content_type, body = self.satisfy_bsig_request({:query => request.query})
+
 					end
 				end
 
@@ -791,6 +799,17 @@ module Sfp
 				return [200, '', ''] if Sfp::Agent.start_bsig
 
 				return [500, '', '']
+			end
+
+			def satisfy_bsig_request(p={})
+				if p[:query]
+					bsig_engine = Sfp::Agent.bsig_engine
+					if not bsig_engine.nil?
+						[500, '', ''] if not bsig_engine.receive_goal_from_agent(p[:query]['version'], p[:query]['goal'], p[:query]['pi'])
+					end
+				end
+
+				[200, '', '']
 			end
 
 			def trusted(address)

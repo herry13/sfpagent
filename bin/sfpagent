@@ -18,10 +18,10 @@ EOS
 	opt :stop, "Stop the daemon agent."
 	opt :restart, "Restart the daemon agent."
 	opt :status, "Print the status of the daemon agent."
+	opt :port, "Port number of the daemon agent should listen to.", :short => '-p', :default => Sfp::Agent::DefaultPort
 	opt :state, "Given a model, print the state of all modules. (Note: [model-file] should be specified.)"
 	opt :execute, "Given a model, execute a plan in given file. (Note: [model-file] should be specified.)"
-	opt :pretty, "Print the result in a pretty JSON format."
-	opt :port, "Port number of the daemon agent should listen to.", :default => Sfp::Agent::DefaultPort
+	opt :pretty, "Print the result in a pretty JSON format.", :short => '-r'
 	#opt :daemon, "Start the agent as a daemon.", :default => true
 	opt :ssl, "Set the agent to use HTTPS instead of HTTP.", :default => false
 	opt :certfile, "Certificate file for HTTPS.", :default => ''
