@@ -24,6 +24,7 @@ module Sfp
 		LogFile = "#{CachedDir}/sfpagent.log"
 		ModelFile = "#{CachedDir}/sfpagent.model"
 		BSigFile = "#{CachedDir}/bsig.model"
+		BSigPIDFile = "#{CachedDir}/bsig.pid"
 		AgentsDataFile = "#{CachedDir}/sfpagent.agents"
 
 		@@logger = WEBrick::Log.new(LogFile, WEBrick::BasicLog::INFO ||
@@ -32,6 +33,7 @@ module Sfp
 		                                     WEBrick::BasicLog::WARN)
 
 		@@bsig = nil
+		@@bsig_modified_time = nil
 
 		@@model_lock = Mutex.new
 		@@runtime_lock = Mutex.new
@@ -67,7 +69,7 @@ module Sfp
 				port = (p[:port] ? p[:port] : DefaultPort)
 	
 				config = {:Host => '0.0.0.0', :Port => port, :ServerType => server_type,
-				          :Logger => @@logger}
+				          :Logger => Sfp::Agent.logger }
 				if p[:ssl]
 					config[:SSLEnable] = true
 					config[:SSLVerifyClient] = OpenSSL::SSL::VERIFY_NONE
@@ -80,41 +82,54 @@ module Sfp
 				reload_model
 
 				server = WEBrick::HTTPServer.new(config)
-				server.mount("/", Sfp::Agent::Handler, @@logger)
+				server.mount("/", Sfp::Agent::Handler, Sfp::Agent.logger)
 
-				fork {
+				@@bsig_engine = Object.new
+				@@bsig_engine.extend(Sfp::BSig)
+
+				['INT', 'KILL', 'HUP'].each { |signal|
+					trap(signal) {
+						Sfp::Agent.logger.info "Shutting down web server"
+						server.shutdown
+					}
+				}
+
+				# start web server
+				fork { server.start }
+
+				# start BSig main thread
+				bsig_pid = fork { @@bsig_engine.start }
+				puts "BSig Engine is running with PID #{bsig_pid}"
+				File.open(BSigPIDFile, 'w') { |f| f.write(bsig_pid.to_s) }
+
+				# send request to save PID
+				uri = URI.parse("http://127.0.0.1:#{config[:Port]}/pid")
+				http = Net::HTTP.new(uri.host, uri.port)
+				if p[:ssl]
+					http.use_ssl = p[:ssl]
+					http.verify_mode = OpenSSL::SSL::VERIFY_NONE
+				end
+				req = Net::HTTP::Get.new(uri.path)
+				pid = nil
+				tries = 1
+				begin
 					begin
-						# send request to save PID
-						sleep 2
-						url = URI.parse("http://127.0.0.1:#{config[:Port]}/pid")
-						http = Net::HTTP.new(url.host, url.port)
-						if p[:ssl]
-							http.use_ssl = p[:ssl]
-							http.verify_mode = OpenSSL::SSL::VERIFY_NONE
-						end
-						req = Net::HTTP::Get.new(url.path)
 						http.request(req)
-						puts "\nSFP Agent is running with PID #{File.read(PIDFile)}" if File.exist?(PIDFile)
-					rescue Exception => e
-						Sfp::Agent.logger.warn "Cannot request /pid #{e}\n#{e.backtrace.join("\n")}"
+						pid = File.read(PIDFile)
+					rescue
+						sleep (tries * tries)
 					end
-				}
+					tries += 1
+				end until not pid.nil? or tries >= 5
 
-				bsig_main = Object.new
-				bsig_main.extend(Sfp::BSig::Main)
+				if not pid.nil?
+					puts "SFP Agent is running with PID #{File.read(PIDFile)}" if File.exist?(PIDFile)
+				else
+					Sfp::Agent.logger.warn "Cannot request PID"
+				end
 
-				Thread.new {
-					bsig_main.execute_model()
-				}
-
-				trap('INT') {
-					server.shutdown
-					bsig_main.shutdown
-				}
-
-				server.start
 			rescue Exception => e
-				@@logger.error "Starting the agent [Failed] #{e}\n#{e.backtrace.join("\n")}"
+				Sfp::Agent.logger.error "Starting the agent [Failed] #{e}\n#{e.backtrace.join("\n")}"
 				raise e
 			end
 		end
@@ -124,28 +139,47 @@ module Sfp
 		def self.stop
 			pid = (File.exist?(PIDFile) ? File.read(PIDFile).to_i : nil)
 			if not pid.nil? and `ps h #{pid}`.strip =~ /.*sfpagent.*/
-				print "Stopping SFP Agent with PID #{pid} "
-				Process.kill('KILL', pid)
-				puts "[OK]"
-				@@logger.info "SFP Agent daemon has been stopped."
+				Process.kill('HUP', pid)
+				puts "Stopping SFP Agent with PID #{pid} [OK]"
+				Sfp::Agent.logger.info "SFP Agent daemon has been stopped."
+				File.delete(PIDFile) if File.exist?(PIDFile)
 			else
 				puts "SFP Agent is not running."
 			end
-			File.delete(PIDFile) if File.exist?(PIDFile)
+
+			pid_bsig = (File.exist?(BSigPIDFile) ? File.read(BSigPIDFile).to_i : nil)
+			if not pid_bsig.nil? and `ps h #{pid_bsig}`.strip =~ /.*sfpagent.*/
+				Process.kill('HUP', pid_bsig)
+				puts "Stopping BSig engine with PID #{pid_bsig} [OK]"
+			else
+				puts "BSig engine is not running."
+			end
 		end
 
 		# Print the status of the agent.
 		#
 		def self.status
-			pid = (File.exist?(PIDFile) ? File.read(PIDFile).to_i : nil)
-			if pid.nil?
+			if not File.exist?(PIDFile)
 				puts "SFP Agent is not running."
 			else
+				pid = File.read(PIDFile).to_i
 				if `ps hf #{pid}`.strip =~ /.*sfpagent.*/
 					puts "SFP Agent is running with PID #{pid}"
 				else
 					File.delete(PIDFile)
 					puts "SFP Agent is not running."
+				end
+			end
+
+			if not File.exist?(BSigPIDFile)
+				puts "BSig engine is not running."
+			else
+				pid = File.read(BSigPIDFile).to_i
+				if `ps hf #{pid}`.strip =~ /.*sfpagent.*/
+					puts "BSig engine is running with PID #{pid}"
+				else
+					File.delete(BSigPIDFile)
+					puts "BSig engine is not running."
 				end
 			end
 		end
@@ -155,17 +189,17 @@ module Sfp
 		def self.set_model(model)
 			begin
 				@@model_lock.synchronize {
-					@@logger.info "Setting the model [Wait]"
+					Sfp::Agent.logger.info "Setting the model [Wait]"
 					File.open(ModelFile, 'w', 0600) { |f|
 						f.write(JSON.generate(model))
 						f.flush
 					}
 				}
 				reload_model
-				@@logger.info "Setting the model [OK]"
+				Sfp::Agent.logger.info "Setting the model [OK]"
 				return true
 			rescue Exception => e
-				@@logger.error "Setting the model [Failed] #{e}\n#{e.backtrace.join("\n")}"
+				Sfp::Agent.logger.error "Setting the model [Failed] #{e}\n#{e.backtrace.join("\n")}"
 			end
 			false
 		end
@@ -179,7 +213,7 @@ module Sfp
 					return JSON[File.read(ModelFile)]
 				}
 			rescue Exception => e
-				@@logger.error "Get the model [Failed] #{e}\n#{e.backtrace.join("\n")}"
+				Sfp::Agent.logger.error "Get the model [Failed] #{e}\n#{e.backtrace.join("\n")}"
 			end
 			false
 		end
@@ -189,7 +223,7 @@ module Sfp
 		def self.set_bsig(bsig)
 			begin
 				@@bsig_lock.synchronize {
-					@@logger.info "Setting the BSig model [Wait]"
+					Sfp::Agent.logger.info "Setting the BSig model [Wait]"
 					if bsig.nil?
 						File.delete(BSigFile) if File.exist?(BSigFile)
 					else
@@ -198,12 +232,11 @@ module Sfp
 							f.flush
 						}
 					end
-					@@bsig = bsig
 				}
-				@@logger.info "Setting the BSig model [OK]"
+				Sfp::Agent.logger.info "Setting the BSig model [OK]"
 				return true
 			rescue Exception => e
-				@@logger.error "Setting the BSig model [Failed] #{e}\n#{e.backtrace.join("\n")}"
+				Sfp::Agent.logger.error "Setting the BSig model [Failed] #{e}\n#{e.backtrace.join("\n")}"
 			end
 			false
 		end
@@ -211,15 +244,17 @@ module Sfp
 		# Return a BSig model from cached file
 		#
 		def self.get_bsig
-			return @@bsig if !@@bsig.nil?
 			return nil if not File.exist?(BSigFile)
+			return @@bsig if File.mtime(BSigFile) == @@bsig_modified_time
+
 			begin
 				@@bsig_lock.synchronize {
 					@@bsig = JSON[File.read(BSigFile)]
+					@@bsig_modified_time = File.mtime(BSigFile)
 					return @@bsig
 				}
 			rescue Exception => e
-				@@logger.error "Get the BSig model [Failed] #{e}\n#{e.backtrace.join("\n")}"
+				Sfp::Agent.logger.error "Get the BSig model [Failed] #{e}\n#{e.backtrace.join("\n")}"
 			end
 			false
 		end
@@ -229,13 +264,13 @@ module Sfp
 		def self.reload_model
 			model = get_model
 			if model.nil?
-				@@logger.info "There is no model in cache."
+				Sfp::Agent.logger.info "There is no model in cache."
 			else
 				begin
 					@@runtime_lock.synchronize { @@runtime = Sfp::Runtime.new(model) }
-					@@logger.info "Reloading the model in cache [OK]"
+					Sfp::Agent.logger.info "Reloading the model in cache [OK]"
 				rescue Exception => e
-					@@logger.error "Reloading the model in cache [Failed] #{e}\n#{e.backtrace.join("\n")}"
+					Sfp::Agent.logger.error "Reloading the model in cache [Failed] #{e}\n#{e.backtrace.join("\n")}"
 				end
 			end
 		end
@@ -254,7 +289,7 @@ module Sfp
 					@@runtime.get_state if @@runtime.modules.nil?
 					return @@runtime.get_state(as_sfp)
 				rescue Exception => e
-					@@logger.error "Get state [Failed] #{e}\n#{e.backtrace.join("\n")}"
+					Sfp::Agent.logger.error "Get state [Failed] #{e}\n#{e.backtrace.join("\n")}"
 				end
 			}
 			false
@@ -291,7 +326,7 @@ module Sfp
 					end
 				end
 			rescue Exception => e
-				@@logger.error "Resolve #{path} [Failed] #{e}\n#{e.backtrace.join("\n")}"
+				Sfp::Agent.logger.error "Resolve #{path} [Failed] #{e}\n#{e.backtrace.join("\n")}"
 			end
 			Sfp::Undefined.new
 		end
@@ -301,7 +336,7 @@ module Sfp
 		# @param action contains the action's schema.
 		#
 		def self.execute_action(action)
-			logger = (@@config[:daemon] ? @@logger : Logger.new(STDOUT))
+			logger = (@@config[:daemon] ? Sfp::Agent.logger : Logger.new(STDOUT))
 			action_string = "#{action['name']} #{JSON.generate(action['parameters'])}"
 			begin
 				result = @@runtime.execute_action(action)
@@ -324,22 +359,22 @@ module Sfp
 			@@modules = []
 			counter = 0
 			if dir != '' and File.exist?(dir)
-				@@logger.info "Modules directory: #{dir}"
+				Sfp::Agent.logger.info "Modules directory: #{dir}"
 				Dir.entries(dir).each { |name|
 					next if name == '.' or name == '..' or File.file?("#{dir}/#{name}")
 					module_file = "#{dir}/#{name}/#{name}.rb"
 					next if not File.exist?(module_file)
 					begin
 						load module_file #require module_file
-						@@logger.info "Loading module #{dir}/#{name} [OK]"
+						Sfp::Agent.logger.info "Loading module #{dir}/#{name} [OK]"
 						counter += 1
 						@@modules << name
 					rescue Exception => e
-						@@logger.warn "Loading module #{dir}/#{name} [Failed]\n#{e}"
+						Sfp::Agent.logger.warn "Loading module #{dir}/#{name} [Failed]\n#{e}"
 					end
 				}
 			end
-			@@logger.info "Successfully loading #{counter} modules."
+			Sfp::Agent.logger.info "Successfully loading #{counter} modules."
 		end
 
 		def self.get_schemata(module_name)
@@ -377,10 +412,10 @@ module Sfp
 			return true if @@config[:modules_dir] == ''
 			if system("rm -rf #{@@config[:modules_dir]}/*")
 				load_modules(@@config)
-				@@logger.info "Deleting all modules [OK]"
+				Sfp::Agent.logger.info "Deleting all modules [OK]"
 				return true
 			end
-			@@logger.info "Deleting all modules [Failed]"
+			Sfp::Agent.logger.info "Deleting all modules [Failed]"
 			false
 		end
 
@@ -394,7 +429,7 @@ module Sfp
 				result = true
 			end
 			load_modules(@@config)
-			@@logger.info "Deleting module #{name} " + (result ? "[OK]" : "[Failed]")
+			Sfp::Agent.logger.info "Deleting module #{name} " + (result ? "[OK]" : "[Failed]")
 			result
 		end
 
@@ -424,7 +459,7 @@ module Sfp
 				system("cd #{module_dir}; rm data.tgz")
 			}
 			load_modules(@@config)
-			@@logger.info "Installing module #{name} [OK]"
+			Sfp::Agent.logger.info "Installing module #{name} [OK]"
 
 			true
 		end
@@ -457,9 +492,12 @@ module Sfp
 			true
 		end
 
+		@@agents_data = nil
+		@@agents_data_modified_time = nil
 		def self.get_agents
 			return {} if not File.exist?(AgentsDataFile)
-			JSON[File.read(AgentsDataFile)]
+			return @@agents_data if File.mtime(AgentsDataFile) == @@agents_data_modified_time
+			@@agents_data = JSON[File.read(AgentsDataFile)]
 		end
 
 		# A class that handles each request.
@@ -487,6 +525,9 @@ module Sfp
 					path = (request.path[-1,1] == '/' ? request.path.chop : request.path)
 					if path == '/pid' and (request.peeraddr[2] == 'localhost' or request.peeraddr[3] == '127.0.0.1')
 						status, content_type, body = save_pid
+
+					elsif path == '/bsig/start' and (request.peeraddr[2] == 'localhost' or request.peeraddr[3] == '127.0.0.1')
+						status, content_type, body = start_bsig
 
 					elsif path == '/state'
 						status, content_type, body = get_state
@@ -746,9 +787,16 @@ module Sfp
 				[500, '', '']
 			end
 
+			def start_bsig(p={})
+				return [200, '', ''] if Sfp::Agent.start_bsig
+
+				return [500, '', '']
+			end
+
 			def trusted(address)
 				true
 			end
+
 		end
 	end
 
