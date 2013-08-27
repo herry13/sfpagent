@@ -87,7 +87,6 @@ module Sfp
 				@@bsig_engine = Object.new
 				@@bsig_engine.extend(Sfp::BSig)
 				@@bsig_engine.extend(Nuri::Net::Helper)
-				@@bsig_engine.enabled = true
 
 				['INT', 'KILL', 'HUP'].each { |signal|
 					trap(signal) {
@@ -103,6 +102,7 @@ module Sfp
 				bsig_pid = fork { @@bsig_engine.start }
 				puts "BSig Engine is running with PID #{bsig_pid}"
 				File.open(BSigPIDFile, 'w') { |f| f.write(bsig_pid.to_s) }
+				@@bsig_engine.enabled = true
 
 				# send request to save PID
 				uri = URI.parse("http://127.0.0.1:#{config[:Port]}/pid")

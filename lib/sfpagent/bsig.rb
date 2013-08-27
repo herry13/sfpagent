@@ -24,7 +24,13 @@ module Sfp::BSig
 		@enabled = true
 		Sfp::Agent.logger.info "Starting BSig engine [OK]"
 
-		self.execute_model
+		while @enabled
+			begin
+				self.execute_model
+			rescue Exception => e
+				Sfp::Agent.logger.error "Error on executing BSig model #{e}\n#{e.backtrace.join("\n")}"
+			end
+		end
 
 		Sfp::Agent.logger.info "BSig engine has stopped."
 	end
