@@ -166,6 +166,7 @@ Sfp::Agent.logger.info "status local: " + status.to_s
 		        'goal' => g,
 		        'pi' => pi}
 		code, _ = put_data(agent['sfpAddress'], agent['sfpPort'], SatisfierPath, data)
+Sfp::Agent.logger.info "send_goal_to_agent - status: " + code.to_s
 		(code == '200')
 	end
 
