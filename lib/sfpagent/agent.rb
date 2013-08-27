@@ -808,10 +808,10 @@ Sfp::Agent.logger.info p.inspect
 					bsig_engine = Sfp::Agent.bsig_engine
 					return [404, '', ''] if bsig_engine.nil?
 
-Sfp::Agent.logger.info bsig_engine.to_s
+Sfp::Agent.logger.info bsig_engine.to_s + " :: " + bsig_engine.enabled.to_s
 					req = p[:query]
 					if not bsig_engine.nil?
-						[500, '', ''] if not bsig_engine.receive_goal_from_agent(req['id'], req['goal'], req['pi'])
+						[500, '', ''] if not bsig_engine.receive_goal_from_agent(req['id'], JSON[req['goal']], req['pi'])
 					end
 				end
 

@@ -133,7 +133,9 @@ Sfp::Agent.logger.info "status local: " + status.to_s
 
 Sfp::Agent.logger.info "receive_goal_from_agent - " + id.inspect + " - " + goal.inspect + " - " + pi.inspect
 		bsig = Sfp::Agent.get_bsig
-Sfp::Agent.logger.info bsig['id']
+Sfp::Agent.logger.info "receive_goal_from_agent - " + id.inspect + " - " + goal.inspect + " - " + pi.inspect
+Sfp::Agent.logger.info bsig.inspect
+
 		return false if bsig.nil? or id < bsig['id']
 
 		status = nil
@@ -171,7 +173,7 @@ Sfp::Agent.logger.info bsig['id']
 
 	def send_goal_to_agent(agent, id, g, pi)
 		data = {'id' => id,
-		        'goal' => g,
+		        'goal' => JSON.generate(g),
 		        'pi' => pi}
 		code, _ = put_data(agent['sfpAddress'], agent['sfpPort'], SatisfierPath, data)
 Sfp::Agent.logger.info "send_goal_to_agent - status: " + code.to_s
