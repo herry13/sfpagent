@@ -39,7 +39,7 @@ module Sfp::BSig
 			if bsig.nil?
 				sleep BSigSleepTime
 			else
-				status = achieve_local_goal(bsig['version'], bsig['goal'], bsig['operators'], 1)
+				status = achieve_local_goal(bsig['id'], bsig['goal'], bsig['operators'], 1)
 Sfp::Agent.logger.info "execute model - status: " + status.to_s
 				if status == :failure
 					Sfp::Agent.logger.error "Executing BSig model [Failed]"
@@ -61,7 +61,7 @@ Sfp::Agent.logger.info "execute model - status: " + status.to_s
 	# :failure   : there is a failure on achieving the goal
 	# :ongoing   : the selected operator is being executed
 	# :repaired  : some goal-flaws have been repaired, but the goal may have other flaws
-	def achieve_local_goal(version, goal, operators, pi)
+	def achieve_local_goal(id, goal, operators, pi)
 		operator = nil
 
 		current = get_current_state
@@ -86,7 +86,7 @@ Sfp::Agent.logger.info "remote: #{JSON.generate(pre_remote)}"
 		status = nil
 		tries = MaxTries
 		begin
-			status = achieve_local_goal(version, pre_local, operators, next_pi)
+			status = achieve_local_goal(id, pre_local, operators, next_pi)
 			if status == :no_flaw or status == :failure or not @enabled
 				break
 			elsif status == :ongoing
@@ -101,7 +101,7 @@ Sfp::Agent.logger.info "remote: #{JSON.generate(pre_remote)}"
 Sfp::Agent.logger.info "status local: " + status.to_s
 		return :failure if status == :failure
 
-		return :failure if not achieve_remote_goal(version, pre_remote, next_pi)
+		return :failure if not achieve_remote_goal(id, pre_remote, next_pi)
 
 		return :failure if not invoke(operator)
 		
@@ -111,27 +111,29 @@ Sfp::Agent.logger.info "status local: " + status.to_s
 		operator['selected'] = false if not operator.nil?
 	end
 
-	def achieve_remote_goal(version, goal, pi)
+	def achieve_remote_goal(id, goal, pi)
 		if goal.length > 0
 			agents = Sfp::Agent.get_agents
 			split_goal_by_agent(goal).each do |agent,g|
 				return false if not agents.has_key?(agent) or agents[agent]['sfpAddress'].to_s == ''
-				return false if not send_goal_to_agent(agents[agent], version, g, pi)
+				return false if not send_goal_to_agent(agents[agent], id, g, pi)
 			end
 		end
 		true
 	end
 
-	def receive_goal_from_agent(version, goal, pi)
+	def receive_goal_from_agent(id, goal, pi)
 		return false if not @enabled
 
+Sfp::Agent.logger.info "receive_goal_from_agent - " + id.inspect + " - " + goal.inspect + " - " + pi.inspect
 		bsig = Sfp::Agent.get_bsig
-		return false if bsig.nil? or version < bsig['version']
+Sfp::Agent.logger.info bsig['id']
+		return false if bsig.nil? or id < bsig['id']
 
 		status = nil
 		tries = MaxTries
 		begin
-			status = achieve_local_goal(bsig['version'], goal, bsig['operators'], pi)
+			status = achieve_local_goal(bsig['id'], goal, bsig['operators'], pi)
 			if status == :no_flaw or status == :failure or not @enabled
 				break
 			elsif status == :ongoing
@@ -161,8 +163,8 @@ Sfp::Agent.logger.info "status local: " + status.to_s
 		agent_goal
 	end
 
-	def send_goal_to_agent(agent, version, g, pi)
-		data = {'version' => version,
+	def send_goal_to_agent(agent, id, g, pi)
+		data = {'id' => id,
 		        'goal' => g,
 		        'pi' => pi}
 		code, _ = put_data(agent['sfpAddress'], agent['sfpPort'], SatisfierPath, data)
