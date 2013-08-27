@@ -87,6 +87,7 @@ module Sfp
 				@@bsig_engine = Object.new
 				@@bsig_engine.extend(Sfp::BSig)
 				@@bsig_engine.extend(Nuri::Net::Helper)
+				@@bsig_engine.enabled = true
 
 				['INT', 'KILL', 'HUP'].each { |signal|
 					trap(signal) {
@@ -802,10 +803,15 @@ module Sfp
 			end
 
 			def satisfy_bsig_request(p={})
+Sfp::Agent.logger.info p.inspect
 				if p[:query]
 					bsig_engine = Sfp::Agent.bsig_engine
+					return [404, '', ''] if bsig_engine.nil?
+
+Sfp::Agent.logger.info bsig_engine.to_s
+					req = p[:query]
 					if not bsig_engine.nil?
-						[500, '', ''] if not bsig_engine.receive_goal_from_agent(p[:query]['version'], p[:query]['goal'], p[:query]['pi'])
+						[500, '', ''] if not bsig_engine.receive_goal_from_agent(req['id'], req['goal'], req['pi'])
 					end
 				end
 
