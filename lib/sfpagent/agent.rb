@@ -50,6 +50,23 @@ module Sfp
 			p
 		end
 
+		class Server < WEBrick::HTTPServer
+			alias super_initialize initialize
+			def initialize(p={})
+				super_initialize(p)
+				Thread.new {
+					1.upto(5) { |i|
+						Sfp::Agent.logger.info "subclass: #{$$}"
+						sleep 1
+					}
+				}
+			end
+
+			def hello
+				puts 'Hello'
+			end
+		end
+
 		# Start the agent.
 		#
 		# options:
@@ -75,7 +92,9 @@ module Sfp
 					config[:SSLPrivateKey] = OpenSSL::PKey::RSA.new(File.open(p[:keyfile]).read)
 					config[:SSLCertName] = [["CN", WEBrick::Utils::getservername]]
 				end
-				server = WEBrick::HTTPServer.new(config)
+				#server = WEBrick::HTTPServer.new(config)
+				server = Server.new(config)
+				server.hello
 				server.mount("/", Sfp::Agent::Handler, Sfp::Agent.logger)
 
 				# load modules from cached directory
@@ -298,23 +317,22 @@ module Sfp
 		end
 
 		def self.resolve(path, as_sfp=true)
+			return Sfp::Undefined.new if !defined?(@@runtime) or @@runtime.nil? or @@runtime.modules.nil?
 			begin
-				#@@runtime_lock.synchronize {
-					return Sfp::Undefined.new if !defined?(@@runtime) or @@runtime.nil? or @@runtime.modules.nil?
-					path = path.simplify
-					_, node, _ = path.split('.', 3)
-					if @@runtime.modules.has_key?(node)
-						# local resolve
-						parent, attribute = path.pop_ref
-						mod = @@runtime.modules.at?(parent)
-						if mod.is_a?(Hash)
-							mod[:_self].update_state
-							state = mod[:_self].state
-							return state[attribute] if state.has_key?(attribute)
-						end
-						return Sfp::Undefined.new
+				path = path.simplify
+				_, node, _ = path.split('.', 3)
+				if @@runtime.modules.has_key?(node)
+					# local resolve
+					parent, attribute = path.pop_ref
+					mod = @@runtime.modules.at?(parent)
+					if mod.is_a?(Hash)
+						mod[:_self].update_state
+						state = mod[:_self].state
+						return state[attribute] if state.has_key?(attribute)
 					end
-				#}
+					return Sfp::Undefined.new
+				end
+
 				agents = get_agents
 				if agents[node].is_a?(Hash)
 					# remote resolve
@@ -407,7 +425,6 @@ module Sfp
 			data = {}
 			@@modules.each { |m| data[m] = get_module_hash(m) }
 			data
-			#(defined?(@@modules) and @@modules.is_a?(Array) ? @@modules : [])
 		end
 
 		def self.uninstall_all_modules(p={})
@@ -570,8 +587,6 @@ module Sfp
 			#
 			# uri:
 			#	/execute => receive an action's schema and execute it
-			#	/migrate => SFP object migration
-			#	/duplicate => SFP object duplication
 			#
 			def do_POST(request, response)
 				status = 400
@@ -582,14 +597,6 @@ module Sfp
 					path = (request.path[-1,1] == '/' ? ryyequest.path.chop : request.path)
 					if path == '/execute'
 						status, content_type, body = self.execute({:query => request.query})
-
-					elsif path =~ /\/migrate\/.+/
-						status, content_type, body = self.migrate({:src => path[8, path.length-8],
-						                                           :dest => request.query['destination']})
-
-					elsif path =~ /\/duplicate\/.+/
-						# TODO
-
 					end
 				end
 
@@ -631,49 +638,12 @@ module Sfp
 					elsif path == '/bsig/satisfier'
 						status, content_type, body = self.satisfy_bsig_request({:query => request.query})
 
-=begin
-					elsif path == '/bsig/start'
-						status, content_type, body = self.start_bsig
-
-					elsif path == '/bsig/stop'
-						status, content_type, body = self.stop_bsig
-=end
-
 					end
 				end
 
 				response.status = status
 				response['Content-Type'] = content_type
 				response.body = body
-			end
-
-			def migrate(p={})
-				# migrate: source path, destination path
-				#@logger.info "migrate #{p[:src]} => #{p[:dest]}"
-				return [400, 'plain/text', 'Destination path should begin with "/"'] if p[:dest].to_s[0,1] != '/'
-				begin
-					# reformat the source and destination paths to SFP reference
-					p[:src] = '$' + p[:src].gsub(/\//, '.')
-					p[:dest] = '$' + p[:dest].gsub(/\//, '.')
-
-					# find the target in agents' database
-					agents = Sfp::Agent.get_agents
-					data = agents.at?(p[:dest])
-					return [404, 'plain/text', 'Unrecognized destination!'] if !data.is_a?(Hash)
-
-					# send the sub-model to destination
-					model = Sfp::Agent.get_model
-					return [404, '', ''] if model.nil?
-					submodel = model.at?(p[:src])
-
-					# TODO
-					# 1. send the configuration to destination
-
-					return [200, 'plain/text', "#{p[:src]} #{p[:dest]}:#{data.inspect}"]
-				rescue Exception => e
-					@logger.error "Migration failed #{e}\n#{e.backtrace.join("\n")}"
-				end
-				return [500, 'plain/text', e.to_s]
 			end
 
 			def manage_agents(p={})
@@ -803,44 +773,11 @@ module Sfp
 				bsig_engine = Sfp::Agent.bsig_engine
 				return [500, '', ''] if bsig_engine.nil?
 
-				#activate_bsig(true) if bsig_engine.enabled.nil?
 				req = p[:query]
-				if bsig_engine.receive_goal_from_agent(req['id'].to_i, JSON[req['goal']], req['pi'].to_i)
-					return [200, '', '']
-				end
+				return [200, '', ''] if bsig_engine.receive_goal_from_agent(req['id'].to_i, JSON[req['goal']], req['pi'].to_i)
+
 				[500, '', '']
 			end
-
-=begin
-			def start_bsig(p={})
-				bsig_engine = Sfp::Agent.bsig_engine
-				return [500, '', ''] if bsig_engine.nil?
-
-				Thread.new {
-					bsig_engine.start if not bsig_engine.enabled
-				}
-				[200, '', '']
-			end
-
-			def stop_bsig(p={})
-				bsig_engine = Sfp::Agent.bsig_engine
-				return [500, '', ''] if bsig_engine.nil?
-
-				bsig_engine.stop if bsig_engine.enabled
-				[200, '', '']
-			end
-
-
-			def activate_bsig(enabled)
-				bsig_engine = Sfp::Agent.bsig_engine
-				if bsig_engine.nil?
-					[500, '', '']
-				else
-					bsig_engine.enabled = enabled
-					[200, '', '']
-				end
-			end
-=end
 
 			def trusted(address)
 				true
