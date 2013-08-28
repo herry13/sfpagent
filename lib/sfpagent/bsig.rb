@@ -46,8 +46,6 @@ class Sfp::BSig
 
 			self.execute_model
 
-			#File.delete(SatisfierLockFile) if File.exist?(SatisfierLockFile)
-	
 			Sfp::Agent.logger.info "[main] BSig engine has stopped."
 
 		else

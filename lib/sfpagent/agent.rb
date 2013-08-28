@@ -191,14 +191,13 @@ module Sfp
 		#
 		def self.set_model(model)
 			begin
-				Sfp::Agent.logger.info "Setting the model [Wait]"
-
 				# generate MD5 hash for the new model
 				data = JSON.generate(model)
 				new_model_hash = Digest::MD5.hexdigest(data)
 
 				# save the new model if it's not same with the existing one
 				if Digest::MD5.hexdigest(data) != @@current_model_hash
+					Sfp::Agent.logger.info "Setting new model [Wait]"
 					File.open(ModelFile, File::RDWR|File::CREAT, 0600) { |f|
 						f.flock(File::LOCK_EX)
 						f.rewind
@@ -207,30 +206,16 @@ module Sfp
 						f.truncate(f.pos)
 					}
 					reload_model
+					Sfp::Agent.logger.info "Setting the model [OK]"
 				else
-					Sfp::Agent.logger.info "The model is not changed."
+					#Sfp::Agent.logger.info "The model is not changed."
 				end
-				Sfp::Agent.logger.info "Setting the model [OK]"
 				return true
 			rescue Exception => e
 				Sfp::Agent.logger.error "Setting the model [Failed] #{e}\n#{e.backtrace.join("\n")}"
 			end
 			false
 		end
-
-=begin
-		# Return the model which is read from cached file.
-		#
-		def self.get_model
-			return nil if not File.exist?(ModelFile)
-			begin
-				return JSON[File.read(ModelFile)]
-			rescue Exception => e
-				Sfp::Agent.logger.error "Get the model [Failed] #{e}\n#{e.backtrace.join("\n")}"
-			end
-			false
-		end
-=end
 
 		# Reload the model from cached file.
 		#
