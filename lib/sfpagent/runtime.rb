@@ -1,7 +1,7 @@
 require 'thread'
 
 class Sfp::Runtime
-	attr_reader :modules
+	attr_reader :root
 
 	def initialize(model)
 		@mutex_procedure = Mutex.new
