@@ -109,7 +109,8 @@ Sfp::Agent.logger.info "Instantiating object: #{model['_self']}"
 
 		model.each do |key,child|
 			next if key[0,1] == '_' or not child.is_a?(Hash) or child['_context'] != 'object' or
-				not child['_isa'].to_s.isref or child['_isa'].to_s == '$.Object'
+				child['_isa'].to_s == '$.Object'
+				#not child['_isa'].to_s.isref or child['_isa'].to_s == '$.Object'
 			object[key] = update_model(child, root, path.push(key))
 		end
 
@@ -151,10 +152,10 @@ Sfp::Agent.logger.info "Instantiating object: #{model['_self']}"
 
 	SFPtoRubyValueConverter = Object.new
 	def SFPtoRubyValueConverter.visit(name, value, parent)
-		if value.is_a?(Hash)
+		if name[0,1] != '_' and value.is_a?(Hash)
 			if value['_context'] == 'null'
 				parent[name] = nil
-			elsif value['_context'] = 'set'
+			elsif value['_context'] == 'set'
 				parent[name] = value['_values']
 			end
 		end
