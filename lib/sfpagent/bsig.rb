@@ -46,7 +46,7 @@ class Sfp::BSig
 
 			self.execute_model
 
-			File.delete(SatisfierLockFile) if File.exist?(SatisfierLockFile)
+			#File.delete(SatisfierLockFile) if File.exist?(SatisfierLockFile)
 	
 			Sfp::Agent.logger.info "[main] BSig engine has stopped."
 
@@ -193,6 +193,8 @@ Sfp::Agent.logger.info "[satisfier] " + bsig.inspect
 
 	protected
 	def register_satisfier_thread(mode=nil)
+		return if mode == :reset and File.exist?(SatisfierLockFile)
+
 		File.open(SatisfierLockFile, File::RDWR|File::CREAT, 0644) { |f|
 			f.flock(File::LOCK_EX)
 			value = (mode == :reset ? 0 : (f.read.to_i + 1))
