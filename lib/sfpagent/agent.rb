@@ -290,6 +290,7 @@ module Sfp
 		#
 		def self.get_state(as_sfp=true)
 			@@runtime_lock.synchronize {
+Sfp::Agent.logger.info "Sfp::Agent.get_state"
 				return nil if !defined?(@@runtime) or @@runtime.nil?
 				begin
 					@@runtime.get_state if @@runtime.modules.nil?

@@ -5,6 +5,7 @@ class Sfp::Runtime
 
 	def initialize(model)
 		@mutex_procedure = Mutex.new
+		@mutex_get_state = Mutex.new
 		@root = model
 		@modules = nil
 	end
@@ -120,12 +121,14 @@ class Sfp::Runtime
 			[modules, state]
 		end
 
-		root = Sfp::Helper.deep_clone(@root)
-		root.accept(ParentEliminator)
-		@modules, state = get_object_state(root, root, as_sfp)
-		@modules.accept(ParentGenerator)
+		@mutex_get_state.synchronize {
+			root = Sfp::Helper.deep_clone(@root)
+			root.accept(ParentEliminator)
+			@modules, state = get_object_state(root, root, as_sfp)
+			@modules.accept(ParentGenerator)
 
-		state
+			state
+		}
 	end
 
 	def whoami?
