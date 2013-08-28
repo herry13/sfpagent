@@ -7,7 +7,8 @@ class Sfp::BSig
 	MaxTries = 5
 
 	SatisfierPath = '/bsig/satisfier'
-	SatisfierLockFile = '/tmp/bsig.satisfier.lock'
+	CachedDir = (Process.euid == 0 ? '/var/sfpagent' : File.expand_path('~/.sfpagent'))
+	SatisfierLockFile = CachedDir + '/bsig.satisfier.lock'
 
 	attr_accessor :enabled
 
