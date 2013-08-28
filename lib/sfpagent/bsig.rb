@@ -36,7 +36,7 @@ class Sfp::BSig
 		if mode == :main
 			['INT', 'KILL', 'HUP'].each { |signal|
 				trap(signal) {
-					wakeup
+					#wakeup
 					Sfp::Agent.logger.info "Shutting down BSig engine"
 					stop
 				}

@@ -84,7 +84,7 @@ module Sfp
 				load_modules(p)
 
 				# reload model
-				build_model
+				build_model({:complete => true})
 
 				# trap stop-signal
 				['INT', 'KILL', 'HUP'].each { |signal|
