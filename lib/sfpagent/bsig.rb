@@ -21,7 +21,7 @@ class Sfp::BSig
 		@mode = nil
 	end
 
-	def start(mode=:main)
+	def start(mode=:satisfier)
 		@lock.synchronize {
 			if @enabled
 				Sfp::Agent.logger.info "BSig engine [#{@mode.to_s}] is already running!"

@@ -103,7 +103,7 @@ module Sfp
 				}
 
 				# start BSig main thread
-				bsig_pid = fork { bsig_engine.start }
+				bsig_pid = fork { bsig_engine.start(:main) }
 				puts "BSig Engine is running with PID #{bsig_pid}"
 				File.open(BSigPIDFile, 'w') { |f| f.write(bsig_pid.to_s) }
 
