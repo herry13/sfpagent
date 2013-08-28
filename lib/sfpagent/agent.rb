@@ -32,6 +32,7 @@ module Sfp
 
 		@@bsig = nil
 		@@bsig_modified_time = nil
+		@@bsig_engine = Sfp::BSig.new # create BSig engine instance
 
 		@@model_lock = Mutex.new
 		@@runtime_lock = Mutex.new
@@ -48,23 +49,6 @@ module Sfp
 			p[:modules_dir].chop! if p[:modules_dir][-1,1] == '/'
 			Dir.mkdir(p[:modules_dir], 0700) if not File.exists?(p[:modules_dir])
 			p
-		end
-
-		class Server < WEBrick::HTTPServer
-			alias super_initialize initialize
-			def initialize(p={})
-				super_initialize(p)
-				Thread.new {
-					1.upto(5) { |i|
-						Sfp::Agent.logger.info "subclass: #{$$}"
-						sleep 1
-					}
-				}
-			end
-
-			def hello
-				puts 'Hello'
-			end
 		end
 
 		# Start the agent.
@@ -92,9 +76,7 @@ module Sfp
 					config[:SSLPrivateKey] = OpenSSL::PKey::RSA.new(File.open(p[:keyfile]).read)
 					config[:SSLCertName] = [["CN", WEBrick::Utils::getservername]]
 				end
-				#server = WEBrick::HTTPServer.new(config)
-				server = Server.new(config)
-				server.hello
+				server = WEBrick::HTTPServer.new(config)
 				server.mount("/", Sfp::Agent::Handler, Sfp::Agent.logger)
 
 				# load modules from cached directory
@@ -102,9 +84,6 @@ module Sfp
 
 				# reload model
 				reload_model
-
-				# create BSig execution engine
-				@@bsig_engine = Sfp::BSig.new
 
 				# trap stop-signal
 				['INT', 'KILL', 'HUP'].each { |signal|
@@ -115,10 +94,16 @@ module Sfp
 				}
 
 				# start web server
-				fork { server.start }
+				fork {
+					# start BSig engine to be used by satisfier threads
+					bsig_engine.start
+
+					# start web server
+					server.start
+				}
 
 				# start BSig main thread
-				bsig_pid = fork { @@bsig_engine.start }
+				bsig_pid = fork { bsig_engine.start }
 				puts "BSig Engine is running with PID #{bsig_pid}"
 				File.open(BSigPIDFile, 'w') { |f| f.write(bsig_pid.to_s) }
 
@@ -171,10 +156,6 @@ module Sfp
 			end
 
 			Sfp::Agent.logger.info "SFP Agent daemon has been stopped."
-		end
-
-		def self.bsig_engine
-			@@bsig_engine
 		end
 
 		# Print the status of the agent.
@@ -278,6 +259,10 @@ module Sfp
 				Sfp::Agent.logger.error "Get the BSig model [Failed] #{e}\n#{e.backtrace.join("\n")}"
 			end
 			false
+		end
+
+		def self.bsig_engine
+			@@bsig_engine
 		end
 
 		# Reload the model from cached file.
@@ -770,11 +755,12 @@ module Sfp
 			def satisfy_bsig_request(p={})
 				return [400, '', ''] if not p[:query]
 
-				bsig_engine = Sfp::Agent.bsig_engine
-				return [500, '', ''] if bsig_engine.nil?
+Sfp::Agent.logger.info Sfp::Agent.bsig_engine.to_s
+
+				return [500, '', ''] if Sfp::Agent.bsig_engine.nil?
 
 				req = p[:query]
-				return [200, '', ''] if bsig_engine.receive_goal_from_agent(req['id'].to_i, JSON[req['goal']], req['pi'].to_i)
+				return [200, '', ''] if Sfp::Agent.bsig_engine.receive_goal_from_agent(req['id'].to_i, JSON[req['goal']], req['pi'].to_i)
 
 				[500, '', '']
 			end
