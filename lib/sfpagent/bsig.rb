@@ -58,22 +58,27 @@ class Sfp::BSig
 
 	def execute_model
 		while @enabled
-			Sfp::Agent.logger.info "[main] Sfp::BSig enabled"
-
-			wait_for_satisfier?
-
-			bsig = Sfp::Agent.get_bsig
-			if bsig.nil?
-				sleep BSigSleepTime
-			else
-				status = achieve_local_goal(bsig['id'], bsig['goal'], bsig['operators'], 1, :main)
+			begin
+				Sfp::Agent.logger.info "[main] Sfp::BSig enabled"
+	
+				wait_for_satisfier?
+	
+				bsig = Sfp::Agent.get_bsig
+				if bsig.nil?
+					sleep BSigSleepTime
+				else
+					status = achieve_local_goal(bsig['id'], bsig['goal'], bsig['operators'], 1, :main)
 Sfp::Agent.logger.info "[main] execute model - status: " + status.to_s
-				if status == :failure
-					Sfp::Agent.logger.error "[main] Executing BSig model [Failed]"
-					sleep BSigSleepTime
-				elsif status == :no_flaw
-					sleep BSigSleepTime
+					if status == :failure
+						Sfp::Agent.logger.error "[main] Executing BSig model [Failed]"
+						sleep BSigSleepTime
+					elsif status == :no_flaw
+						sleep BSigSleepTime
+					end
 				end
+			rescue Exception => exp
+				Sfp::Agent.logger.error "Error on executing BSig model #{e}"
+				sleep BSigSleepTime
 			end
 		end
 	end
