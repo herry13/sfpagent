@@ -76,7 +76,7 @@ class Sfp::Runtime
 
 		# Return the state of an object
 		#
-		def get_object_state(model, root, as_sfp=false, construct_model_only=false, path='$')
+		def get_object_state(model, root, as_sfp=false, path='$')
 			modules = {}
 			state = {}
 			if model['_context'] == 'object' and model['_isa'].to_s.isref
@@ -92,7 +92,7 @@ class Sfp::Runtime
 						modules[:_self] = instantiate_module(model, root, as_sfp)
 					end
 					# update and get the state
-					modules[:_self].update_state if not construct_model_only
+					modules[:_self].update_state
 					state = modules[:_self].state
 					if !mod.nil? and mod.has_key?(:_vars)
 						state.keep_if { |k,v| mod[:_vars].index(k) }
@@ -124,7 +124,7 @@ class Sfp::Runtime
 		@mutex_get_state.synchronize {
 			root = Sfp::Helper.deep_clone(@root)
 			root.accept(ParentEliminator)
-			@modules, _ = get_object_state(root, root, as_sfp, true)
+			get_object_state(root, root, as_sfp)
 			@modules, state = get_object_state(root, root, as_sfp)
 			@modules.accept(ParentGenerator)
 
