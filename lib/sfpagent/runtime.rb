@@ -124,7 +124,6 @@ class Sfp::Runtime
 		@mutex_get_state.synchronize {
 			root = Sfp::Helper.deep_clone(@root)
 			root.accept(ParentEliminator)
-			get_object_state(root, root, as_sfp)
 			@modules, state = get_object_state(root, root, as_sfp)
 			@modules.accept(ParentGenerator)
 
