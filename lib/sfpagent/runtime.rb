@@ -44,6 +44,7 @@ class Sfp::Runtime
 			@model = model
 			if @model.is_a?(Hash)
 				root_model = Sfp::Helper.deep_clone(@model)
+				root_model.accept(SFPtoRubyValueConverter)
 				root_model.accept(ParentEliminator)
 				@root = update_model(root_model, root_model, '$')
 				@root.accept(ParentGenerator)
@@ -145,6 +146,18 @@ Sfp::Agent.logger.info "Instantiating object: #{model['_self']}"
 	ParentGenerator = Object.new
 	def ParentGenerator.visit(name, value, parent)
 		value['_parent'] = parent if value.is_a?(Hash)
+		true
+	end
+
+	SFPtoRubyValueConverter = Object.new
+	def SFPtoRubyValueConverter.visit(name, value, parent)
+		if value.is_a?(Hash)
+			if value['_context'] == 'null'
+				parent[name] = nil
+			elsif value['_context'] = 'set'
+				parent[name] = value['_values']
+			end
+		end
 		true
 	end
 end

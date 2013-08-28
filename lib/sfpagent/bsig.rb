@@ -52,7 +52,7 @@ class Sfp::BSig
 			Sfp::Agent.logger.info "[main] BSig engine has stopped."
 
 		else
-			Sfp::Agent.logger.info "[satisfier] BSig engine is running."
+			Sfp::Agent.logger.info "[satisfier] BSig engine is enabled."
 
 		end
 	end
