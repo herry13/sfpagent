@@ -12,20 +12,18 @@ module Sfp
 	module Agent
 		NetHelper = Object.new.extend(Nuri::Net::Helper)
 
-		if Process.euid == 0
-			CachedDir = '/var/sfpagent'
-		else
-			CachedDir = File.expand_path('~/.sfpagent')
-		end
+		CachedDir = (Process.euid == 0 ? '/var/sfpagent' : File.expand_path('~/.sfpagent'))
 		Dir.mkdir(CachedDir, 0700) if not File.exist?(CachedDir)
 
 		DefaultPort = 1314
+
 		PIDFile = "#{CachedDir}/sfpagent.pid"
 		LogFile = "#{CachedDir}/sfpagent.log"
 		ModelFile = "#{CachedDir}/sfpagent.model"
+		AgentsDataFile = "#{CachedDir}/sfpagent.agents"
+
 		BSigFile = "#{CachedDir}/bsig.model"
 		BSigPIDFile = "#{CachedDir}/bsig.pid"
-		AgentsDataFile = "#{CachedDir}/sfpagent.agents"
 
 		@@logger = WEBrick::Log.new(LogFile, WEBrick::BasicLog::INFO ||
 		                                     WEBrick::BasicLog::ERROR ||
@@ -37,7 +35,7 @@ module Sfp
 
 		@@model_lock = Mutex.new
 		@@runtime_lock = Mutex.new
-		@@bsig_lock = Mutex.new
+		@@bsig_model_lock = Mutex.new
 
 		def self.logger
 			@@logger
@@ -65,9 +63,9 @@ module Sfp
 			begin
 				@@config = p = check_config(p)
 	
+				# create web server
 				server_type = (p[:daemon] ? WEBrick::Daemon : WEBrick::SimpleServer)
 				port = (p[:port] ? p[:port] : DefaultPort)
-	
 				config = {:Host => '0.0.0.0', :Port => port, :ServerType => server_type,
 				          :Logger => Sfp::Agent.logger }
 				if p[:ssl]
@@ -77,15 +75,19 @@ module Sfp
 					config[:SSLPrivateKey] = OpenSSL::PKey::RSA.new(File.open(p[:keyfile]).read)
 					config[:SSLCertName] = [["CN", WEBrick::Utils::getservername]]
 				end
-
-				load_modules(p)
-				reload_model
-
 				server = WEBrick::HTTPServer.new(config)
 				server.mount("/", Sfp::Agent::Handler, Sfp::Agent.logger)
 
+				# load modules from cached directory
+				load_modules(p)
+
+				# reload model
+				reload_model
+
+				# create BSig execution engine
 				@@bsig_engine = Sfp::BSig.new
 
+				# trap stop-signal
 				['INT', 'KILL', 'HUP'].each { |signal|
 					trap(signal) {
 						Sfp::Agent.logger.info "Shutting down web server"
@@ -98,26 +100,18 @@ module Sfp
 
 				# start BSig main thread
 				bsig_pid = fork { @@bsig_engine.start }
-
 				puts "BSig Engine is running with PID #{bsig_pid}"
 				File.open(BSigPIDFile, 'w') { |f| f.write(bsig_pid.to_s) }
 
 				# send request to save PID
-				uri = URI.parse("http://127.0.0.1:#{config[:Port]}/pid")
-				http = Net::HTTP.new(uri.host, uri.port)
-				if p[:ssl]
-					http.use_ssl = p[:ssl]
-					http.verify_mode = OpenSSL::SSL::VERIFY_NONE
-				end
-				req = Net::HTTP::Get.new(uri.path)
 				pid = nil
 				tries = 1
 				begin
 					begin
-						http.request(req)
-						pid = File.read(PIDFile)
+						NetHelper.get_data('127.0.0.1', config[:Port], '/pid')
+						pid = File.read(PIDFile) if File.exist?(PIDFile)
 					rescue
-						sleep (tries * tries)
+						sleep tries
 					end
 					tries += 1
 				end until not pid.nil? or tries >= 5
@@ -137,23 +131,27 @@ module Sfp
 		# Stop the agent's daemon.
 		#
 		def self.stop
+			# stopping web server (main thread)
 			pid = (File.exist?(PIDFile) ? File.read(PIDFile).to_i : nil)
 			if not pid.nil? and `ps h #{pid}`.strip =~ /.*sfpagent.*/
 				Process.kill('HUP', pid)
 				puts "Stopping SFP Agent with PID #{pid} [OK]"
-				Sfp::Agent.logger.info "SFP Agent daemon has been stopped."
 				File.delete(PIDFile) if File.exist?(PIDFile)
 			else
 				puts "SFP Agent is not running."
 			end
 
+			# stopping BSig engine
 			pid_bsig = (File.exist?(BSigPIDFile) ? File.read(BSigPIDFile).to_i : nil)
 			if not pid_bsig.nil? and `ps h #{pid_bsig}`.strip =~ /.*sfpagent.*/
 				Process.kill('HUP', pid_bsig)
 				puts "Stopping BSig engine with PID #{pid_bsig} [OK]"
+				File.delete(BSigPIDFile) if File.exist?(BSigPIDFile)
 			else
 				puts "BSig engine is not running."
 			end
+
+			Sfp::Agent.logger.info "SFP Agent daemon has been stopped."
 		end
 
 		def self.bsig_engine
@@ -226,7 +224,7 @@ module Sfp
 		#
 		def self.set_bsig(bsig)
 			begin
-				@@bsig_lock.synchronize {
+				@@bsig_model_lock.synchronize {
 					Sfp::Agent.logger.info "Setting the BSig model [Wait]"
 					if bsig.nil?
 						File.delete(BSigFile) if File.exist?(BSigFile)
@@ -252,7 +250,7 @@ module Sfp
 			return @@bsig if File.mtime(BSigFile) == @@bsig_modified_time
 
 			begin
-				@@bsig_lock.synchronize {
+				@@bsig_model_lock.synchronize {
 					@@bsig = JSON[File.read(BSigFile)]
 					@@bsig_modified_time = File.mtime(BSigFile)
 					return @@bsig
@@ -633,11 +631,13 @@ module Sfp
 					elsif path == '/bsig/satisfier'
 						status, content_type, body = self.satisfy_bsig_request({:query => request.query})
 
-					elsif path == '/bsig/activate'
-						status, content_type, body = self.activate_bsig(true)
+=begin
+					elsif path == '/bsig/start'
+						status, content_type, body = self.start_bsig
 
-					elsif path == '/bsig/deactivate'
-						status, content_type, body = self.activate_bsig(false)
+					elsif path == '/bsig/stop'
+						status, content_type, body = self.stop_bsig
+=end
 
 					end
 				end
@@ -798,20 +798,38 @@ module Sfp
 			end
 
 			def satisfy_bsig_request(p={})
-				if p[:query]
-					bsig_engine = Sfp::Agent.bsig_engine
-					return [500, '', ''] if bsig_engine.nil?
+				return [400, '', ''] if not p[:query]
 
-					activate_bsig(true) if bsig_engine.enabled.nil?
-					req = p[:query]
-					if bsig_engine.receive_goal_from_agent(req['id'].to_i, JSON[req['goal']], req['pi'].to_i)
-						return [200, '', '']
-					end
-					[500, '', '']
-				else
-					[400, '', '']
+				bsig_engine = Sfp::Agent.bsig_engine
+				return [500, '', ''] if bsig_engine.nil?
+
+				#activate_bsig(true) if bsig_engine.enabled.nil?
+				req = p[:query]
+				if bsig_engine.receive_goal_from_agent(req['id'].to_i, JSON[req['goal']], req['pi'].to_i)
+					return [200, '', '']
 				end
+				[500, '', '']
 			end
+
+=begin
+			def start_bsig(p={})
+				bsig_engine = Sfp::Agent.bsig_engine
+				return [500, '', ''] if bsig_engine.nil?
+
+				Thread.new {
+					bsig_engine.start if not bsig_engine.enabled
+				}
+				[200, '', '']
+			end
+
+			def stop_bsig(p={})
+				bsig_engine = Sfp::Agent.bsig_engine
+				return [500, '', ''] if bsig_engine.nil?
+
+				bsig_engine.stop if bsig_engine.enabled
+				[200, '', '']
+			end
+
 
 			def activate_bsig(enabled)
 				bsig_engine = Sfp::Agent.bsig_engine
@@ -822,17 +840,12 @@ module Sfp
 					[200, '', '']
 				end
 			end
+=end
 
 			def trusted(address)
 				true
 			end
 
 		end
-	end
-
-	def self.require(gem, pack=nil)
-		::Kernel.require gem
-	rescue LoadError => e
-		::Kernel.require gem if system("gem install #{pack||gem} --no-ri --no-rdoc")
 	end
 end

@@ -4,14 +4,16 @@ class Sfp::BSig
 	include Nuri::Net::Helper
 
 	BSigSleepTime = 5
-	SatisfierPath = '/bsig/satisfier'
 	MaxTries = 5
+
+	SatisfierPath = '/bsig/satisfier'
+	#SatisfierLockFile = Sfp::Agent::CachedDir + '/bsig.satisfier.lock'
 
 	attr_accessor :enabled
 
 	def initialize
 		@lock = Mutex.new
-		@enabled = true
+		@enabled = false
 	end
 
 	def stop
@@ -19,6 +21,14 @@ class Sfp::BSig
 	end
 
 	def start
+		@lock.synchronize {
+			if @enabled
+				Sfp::Agent.logger.info "[Main] BSig engine is running!"
+				return
+			end
+			@enabled = true
+		}
+
 		['INT', 'KILL', 'HUP'].each { |signal|
 			trap(signal) {
 				Sfp::Agent.logger.info "Shutting down BSig engine"
@@ -28,13 +38,7 @@ class Sfp::BSig
 
 		Sfp::Agent.logger.info "[Main] Starting BSig engine [OK]"
 
-		while @enabled
-			begin
-				self.execute_model
-			rescue Exception => e
-				Sfp::Agent.logger.error "[Main] Error on executing BSig model #{e}\n#{e.backtrace.join("\n")}"
-			end
-		end
+		self.execute_model
 
 		Sfp::Agent.logger.info "[Main] BSig engine has stopped."
 	end
@@ -82,11 +86,13 @@ Sfp::Agent.logger.info "Flaws: #{JSON.generate(flaws)}"
 		operator = select_operator(flaws, operators, pi)
 		return :failure if operator.nil?
 
-		return :ongoing if operator['selected']
-
+		@lock.synchronize {
+			return :ongoing if operator['selected']
+			operator['selected'] = true
 Sfp::Agent.logger.info "Selected operator: #{JSON.generate(operator)}"
+		}
 
-		@lock.synchronize { operator['selected'] = true }
+		#@lock.synchronize { operator['selected'] = true }
 		next_pi = pi + 1
 		pre_local, pre_remote = split_preconditions(operator)
 
@@ -108,7 +114,7 @@ Sfp::Agent.logger.info "remote: #{JSON.generate(pre_remote)}"
 			tries -= 1
 		end until tries <= 0
 
-Sfp::Agent.logger.info "status local: " + status.to_s
+#Sfp::Agent.logger.info "status local: " + status.to_s
 		return :failure if status == :failure
 
 		return :failure if not achieve_remote_goal(id, pre_remote, next_pi)
