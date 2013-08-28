@@ -76,7 +76,7 @@ Sfp::Agent.logger.info "[main] execute model - status: " + status.to_s
 						sleep BSigSleepTime
 					end
 				end
-			rescue Exception => exp
+			rescue Exception => e
 				Sfp::Agent.logger.error "Error on executing BSig model #{e}"
 				sleep BSigSleepTime
 			end
