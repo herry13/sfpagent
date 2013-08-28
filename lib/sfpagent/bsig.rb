@@ -36,6 +36,7 @@ class Sfp::BSig
 		if mode == :main
 			['INT', 'KILL', 'HUP'].each { |signal|
 				trap(signal) {
+					wakeup
 					Sfp::Agent.logger.info "Shutting down BSig engine"
 					stop
 				}
@@ -46,6 +47,8 @@ class Sfp::BSig
 
 			self.execute_model
 
+			#File.delete(SatisfierLockFile) if File.exist?(SatisfierLockFile)
+	
 			Sfp::Agent.logger.info "[main] BSig engine has stopped."
 
 		else
