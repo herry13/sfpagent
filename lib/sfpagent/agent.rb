@@ -84,7 +84,7 @@ module Sfp
 				load_modules(p)
 
 				# reload model
-				reload_model
+				build_model
 
 				# trap stop-signal
 				['INT', 'KILL', 'HUP'].each { |signal|
@@ -205,7 +205,7 @@ module Sfp
 						f.flush
 						f.truncate(f.pos)
 					}
-					reload_model
+					build_model
 					Sfp::Agent.logger.info "Setting the model [OK]"
 				else
 					#Sfp::Agent.logger.info "The model is not changed."
@@ -219,7 +219,7 @@ module Sfp
 
 		# Reload the model from cached file.
 		#
-		def self.reload_model
+		def self.build_model(p={})
 			if not File.exist?(ModelFile)
 				Sfp::Agent.logger.info "There is no model in cache."
 			else
@@ -227,8 +227,7 @@ module Sfp
 					@@runtime_lock.synchronize {
 						data = File.read(ModelFile)
 						@@current_model_hash = Digest::MD5.hexdigest(data)
-						#@@runtime = Sfp::Runtime.new(JSON[data])
-						if !defined?(@@runtime) or @@runtime.nil?
+						if !defined?(@@runtime) or @@runtime.nil? or p[:complete]
 							@@runtime = Sfp::Runtime.new(JSON[data])
 						else
 							@@runtime.set_model(JSON[data])
@@ -465,6 +464,10 @@ module Sfp
 				system("cd #{module_dir}; rm data.tgz")
 			}
 			load_modules(@@config)
+			
+			# rebuild the model
+			build_model({:complete => true})
+
 			Sfp::Agent.logger.info "Installing module #{name} [OK]"
 
 			true
