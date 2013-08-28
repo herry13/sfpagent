@@ -81,7 +81,7 @@ Sfp::Agent.logger.info "[main] execute model - status: " + status.to_s
 	def wait_for_satisfier?
 		total_satisfier = 1
 		loop do
-			total_satisfier = File.read(SatisfierLockFile).to_i
+			total_satisfier = (File.exist? ? File.read(SatisfierLockFile).to_i : 0)
 			return if total_satisfier <= 0
 			sleep 1
 		end
