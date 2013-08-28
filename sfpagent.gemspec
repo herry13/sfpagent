@@ -16,5 +16,5 @@ Gem::Specification.new do |s|
 	s.homepage		= 'https://github.com/herry13/sfpagent'
 	s.rubyforge_project = 'sfpagent'
 
-	s.add_dependency 'sfp', '~> 0.3.9'
+	s.add_dependency 'sfp', '~> 0.3.12'
 end	
