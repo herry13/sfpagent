@@ -10,7 +10,7 @@ class Sfp::BSig
 	CachedDir = (Process.euid == 0 ? '/var/sfpagent' : File.expand_path('~/.sfpagent'))
 	SatisfierLockFile = CachedDir + '/bsig.satisfier.lock'
 
-	attr_accessor :enabled, :mode
+	attr_reader :enabled, :mode
 
 	def initialize
 		@lock = Mutex.new
@@ -91,7 +91,7 @@ Sfp::Agent.logger.info "[main] execute model - status: " + status.to_s
 		total_satisfier = 1
 		loop do
 			total_satisfier = (File.exist?(SatisfierLockFile) ? File.read(SatisfierLockFile).to_i : 0)
-			return if total_satisfier <= 0
+			return if total_satisfier <= 0 or not @enabled
 			sleep 1
 		end
 	end
@@ -140,7 +140,7 @@ Sfp::Agent.logger.info "[#{mode}] remote-flaws: #{JSON.generate(pre_remote)}"
 		end until tries <= 0
 
 #Sfp::Agent.logger.info "[#{mode}] status local: " + status.to_s
-		return :failure if status == :failure
+		return :failure if status != :no_flaw # == :failure
 
 		return :failure if not achieve_remote_goal(id, pre_remote, next_pi)
 
@@ -190,9 +190,10 @@ Sfp::Agent.logger.info "[#{mode}] remote-flaws: #{JSON.generate(pre_remote)}"
 			tries -= 1
 		end until tries <= 0
 
-		return false if status == :failure
+		#return false if status == :failure
 
-		true
+		#true
+		return (status == :no_flaw)
 
 	ensure
 		unregister_satisfier_thread

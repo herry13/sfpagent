@@ -90,6 +90,7 @@ Sfp::Agent.logger.info "modules dir: " + p[:modules_dir]
 				['INT', 'KILL', 'HUP'].each { |signal|
 					trap(signal) {
 						Sfp::Agent.logger.info "Shutting down web server"
+						bsig_engine.disable
 						server.shutdown
 					}
 				}
