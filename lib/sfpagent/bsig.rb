@@ -107,7 +107,7 @@ Sfp::Agent.logger.info "[main] execute model - status: " + status.to_s
 		current = get_current_state
 		flaws = compute_flaws(goal, current)
 		return :no_flaw if flaws.length <= 0
-Sfp::Agent.logger.info "[#{mode}] Flaws: #{JSON.generate(flaws)}"
+#Sfp::Agent.logger.info "[#{mode}] Flaws: #{JSON.generate(flaws)}"
 
 		operator = select_operator(flaws, operators, pi)
 		return :failure if operator.nil?
@@ -166,13 +166,12 @@ Sfp::Agent.logger.info "[#{mode}] remote-flaws: #{JSON.generate(pre_remote)}"
 	def receive_goal_from_agent(id, goal, pi)
 		register_satisfier_thread
 
-Sfp::Agent.logger.info "[satisfier] enabled: " + @enabled.to_s
 		return false if not @enabled
 
 		bsig = Sfp::Agent.get_bsig
 
-Sfp::Agent.logger.info "[satisfier] receive_goal_from_agent - " + id.inspect + " - " + goal.inspect + " - " + pi.inspect
-Sfp::Agent.logger.info "[satisfier] " + bsig.inspect
+#Sfp::Agent.logger.info "[satisfier] receive_goal_from_agent - " + id.inspect + " - " + goal.inspect + " - " + pi.inspect
+#Sfp::Agent.logger.info "[satisfier] " + bsig.inspect
 
 		return false if bsig.nil? or id < bsig['id']
 
@@ -241,7 +240,7 @@ Sfp::Agent.logger.info "[satisfier] " + bsig.inspect
 		        'goal' => JSON.generate(g),
 		        'pi' => pi}
 		code, _ = put_data(agent['sfpAddress'], agent['sfpPort'], SatisfierPath, data)
-Sfp::Agent.logger.info "send_goal_to_agent - status: " + code.to_s
+Sfp::Agent.logger.info "send_goal_to_agent #{agent['_self']} - status: " + code.to_s
 		(code == '200')
 	end
 
