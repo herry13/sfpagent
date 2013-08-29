@@ -64,6 +64,7 @@ class Sfp::BSig
 	def execute_model
 		Sfp::Agent.logger.info "[main] Executing BSig model"
 
+		previous_status = nil
 		while @enabled
 			begin
 	
@@ -79,6 +80,11 @@ class Sfp::BSig
 						sleep BSigSleepTime
 					elsif status == :no_flaw
 						sleep BSigSleepTime
+					end
+
+					if previous_status != status
+						Sfp::Agent.logger.info "[main] model - status: " + status.to_s
+						previous_status = status
 					end
 				end
 			rescue Exception => e
