@@ -96,15 +96,15 @@ class Sfp::Runtime
 		if model['_context'] == 'object' and model['_isa'].to_s.isref and model['_isa'].to_s != '$.Object'
 			# if this model is an instance of a subclass of Object, then
 			# get the current state of this object
-			obj = (!defined?(@root) or @root.nil? ? nil : @root.at?(path))
-			if obj.is_a?(Hash)
-				object[:_self] = obj[:_self]
-				object[:_self].update_model(model)
-			else
+			#obj = (!defined?(@root) or @root.nil? ? nil : @root.at?(path))
+			#if obj.is_a?(Hash)
+			#	object[:_self] = obj[:_self]
+			#	object[:_self].update_model(model)
+			#else
 Sfp::Agent.logger.info "Instantiating object: #{model['_self']}"
 				# the module has not been instantiated yet!
 				object[:_self] = instantiate_sfp_object(model, root)
-			end
+			#end
 		end
 
 		model.each do |key,child|
