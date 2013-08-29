@@ -6,20 +6,18 @@ SFP Agent for Ruby
 
 [![Gem Version](https://badge.fury.io/rb/sfpagent.png)](http://badge.fury.io/rb/sfpagent)
 
-A Ruby script and API of an SFP agent. The agent could be accessed through HTTP RESTful API.
+A Ruby script and library of SFP agent. The agent could be accessed through HTTP RESTful API.
 
-With this agent, you could manage a software component such as get the state, install, uninstall, update
-its configuration, etc. Each configuration should be specified in [SFP language](https://github.com/herry13/sfp).
+With this agent, you could get the state and deploy configuration of particular software components.
+Each configuration should be specified in [SFP language](https://github.com/herry13/sfp).
 Every software component could have a set of methods which could be called through HTTP request.
 
 
 Requirements
 ------------
 - Ruby (>= 1.8.7)
-- Rubygems
+- Ruby Gems
 	- sfp (>= 0.3.0)
-	- antlr3
-	- json
 
 
 To install
@@ -50,9 +48,9 @@ Cached directory keeps all agent's local data such as:
 - model file
 - installed modules
 
-In default, the agent will use (and created if not exist):
-- directory **~/.sfpagent**, when the daemon is running with non-root user,
-- directory **/var/sfpagent**, when the daemon is running with root user.
+In default, the agent will use (and created if not exist) the following directory as _cached directory_:
+- **~/.sfpagent**, when the daemon is running with non-root user,
+- **/var/sfpagent**, when the daemon is running with root user.
 
 
 HTTP RESTful API
