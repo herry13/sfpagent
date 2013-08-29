@@ -62,9 +62,10 @@ class Sfp::BSig
 	end
 
 	def execute_model
+		Sfp::Agent.logger.info "[main] Executing BSig model"
+
 		while @enabled
 			begin
-				Sfp::Agent.logger.info "[main] Sfp::BSig enabled"
 	
 				wait_for_satisfier?
 	
@@ -73,7 +74,6 @@ class Sfp::BSig
 					sleep BSigSleepTime
 				else
 					status = achieve_local_goal(bsig['id'], bsig['goal'], bsig['operators'], 1, :main)
-Sfp::Agent.logger.info "[main] execute model - status: " + status.to_s
 					if status == :failure
 						Sfp::Agent.logger.error "[main] Executing BSig model [Failed]"
 						sleep BSigSleepTime
@@ -108,7 +108,6 @@ Sfp::Agent.logger.info "[main] execute model - status: " + status.to_s
 		current = get_current_state
 		flaws = compute_flaws(goal, current)
 		return :no_flaw if flaws.length <= 0
-#Sfp::Agent.logger.info "[#{mode}] Flaws: #{JSON.generate(flaws)}"
 
 		operator = select_operator(flaws, operators, pi)
 		return :failure if operator.nil?
@@ -116,8 +115,8 @@ Sfp::Agent.logger.info "[main] execute model - status: " + status.to_s
 		@lock.synchronize {
 			return :ongoing if operator['selected']
 			operator['selected'] = true
-Sfp::Agent.logger.info "[#{mode}] Selected operator: #{JSON.generate(operator)}"
 		}
+#Sfp::Agent.logger.info "[#{mode}] Selected operator: #{JSON.generate(operator)}"
 
 		next_pi = pi + 1
 		pre_local, pre_remote = split_preconditions(operator)
@@ -140,8 +139,7 @@ Sfp::Agent.logger.info "[#{mode}] remote-flaws: #{JSON.generate(pre_remote)}"
 			tries -= 1
 		end until tries <= 0
 
-#Sfp::Agent.logger.info "[#{mode}] status local: " + status.to_s
-		return :failure if status != :no_flaw # == :failure
+		return :failure if status != :no_flaw
 
 		return :failure if not achieve_remote_goal(id, pre_remote, next_pi)
 
@@ -156,9 +154,11 @@ Sfp::Agent.logger.info "[#{mode}] remote-flaws: #{JSON.generate(pre_remote)}"
 	def achieve_remote_goal(id, goal, pi)
 		if goal.length > 0
 			agents = Sfp::Agent.get_agents
-			split_goal_by_agent(goal).each do |agent,g|
-				return false if not agents.has_key?(agent) or agents[agent]['sfpAddress'].to_s == ''
-				return false if not send_goal_to_agent(agents[agent], id, g, pi)
+			split_goal_by_agent(goal).each do |agent_name,agent_goal|
+				return false if not agents.has_key?(agent_name) or agents[agent_name]['sfpAddress'].to_s == ''
+
+Sfp::Agent.logger.info "send_goal_to_agent #{agent_name} - status: " + code.to_s
+				return false if not send_goal_to_agent(agents[agent_name], id, agent_goal, pi)
 			end
 		end
 		true
@@ -170,9 +170,6 @@ Sfp::Agent.logger.info "[#{mode}] remote-flaws: #{JSON.generate(pre_remote)}"
 		return false if not @enabled
 
 		bsig = Sfp::Agent.get_bsig
-
-#Sfp::Agent.logger.info "[satisfier] receive_goal_from_agent - " + id.inspect + " - " + goal.inspect + " - " + pi.inspect
-#Sfp::Agent.logger.info "[satisfier] " + bsig.inspect
 
 		return false if bsig.nil? or id < bsig['id']
 
@@ -191,9 +188,6 @@ Sfp::Agent.logger.info "[#{mode}] remote-flaws: #{JSON.generate(pre_remote)}"
 			tries -= 1
 		end until tries <= 0
 
-		#return false if status == :failure
-
-		#true
 		return (status == :no_flaw)
 
 	ensure
@@ -202,7 +196,6 @@ Sfp::Agent.logger.info "[#{mode}] remote-flaws: #{JSON.generate(pre_remote)}"
 
 	protected
 	def register_satisfier_thread(mode=nil)
-		#return if mode == :reset and File.exist?(SatisfierLockFile)
 		File.open(SatisfierLockFile, File::RDWR|File::CREAT, 0644) { |f|
 			f.flock(File::LOCK_EX)
 			value = (mode == :reset ? 0 : (f.read.to_i + 1))
@@ -241,7 +234,6 @@ Sfp::Agent.logger.info "[#{mode}] remote-flaws: #{JSON.generate(pre_remote)}"
 		        'goal' => JSON.generate(g),
 		        'pi' => pi}
 		code, _ = put_data(agent['sfpAddress'], agent['sfpPort'], SatisfierPath, data)
-Sfp::Agent.logger.info "send_goal_to_agent #{agent['_self']} - status: " + code.to_s
 		(code == '200')
 	end
 
@@ -282,9 +274,7 @@ Sfp::Agent.logger.info "send_goal_to_agent #{agent['_self']} - status: " + code.
 	end
 
 	def can_repair?(operator, flaws)
-		operator['effect'].each { |var,val|
-			return true if flaws[var] == val
-		}
+		operator['effect'].each { |variable,value| return true if flaws[variable] == value }
 		false
 	end
 
