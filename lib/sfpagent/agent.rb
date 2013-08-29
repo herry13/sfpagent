@@ -696,8 +696,11 @@ Sfp::Agent.logger.info "modules dir: " + p[:modules_dir]
 				# The model is not exist.
 				return [404, '', ''] if not File.exist?(Sfp::Agent::ModelFile)
 
-				# The model is exist, and then send it in JSON.
-				return [200, 'application/json', File.read(Sfp::Agent::ModelFile)] if !!model
+				begin
+					# The model is exist, and then send it in JSON.
+					return [200, 'application/json', File.read(Sfp::Agent::ModelFile)]
+				rescue
+				end
 
 				# There is an error when retrieving the model!
 				[500, '', '']
