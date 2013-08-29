@@ -45,6 +45,7 @@ class Sfp::BSig
 		['INT', 'KILL', 'HUP'].each { |signal|
 			trap(signal) {
 				Sfp::Agent.logger.info "Shutting down BSig engine"
+				File.delete(SatisfierLockFile) if File.exist?(SatisfierLockFile)
 				disable
 			}
 		}
