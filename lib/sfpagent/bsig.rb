@@ -45,6 +45,11 @@ class Sfp::BSig
 		['INT', 'KILL', 'HUP'].each { |signal|
 			trap(signal) {
 				Sfp::Agent.logger.info "Shutting down BSig engine"
+				begin
+					run
+				rescue Exception => e
+					Sfp::Agent.logger.info e
+				end
 				disable
 			}
 		}
