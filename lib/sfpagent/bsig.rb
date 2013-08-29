@@ -8,11 +8,11 @@ class Sfp::BSig
 
 	SatisfierPath = '/bsig/satisfier'
 	CachedDir = (Process.euid == 0 ? '/var/sfpagent' : File.expand_path('~/.sfpagent'))
-	SatisfierLockFile = CachedDir + '/bsig.satisfier.lock'
+	SatisfierLockFile = "#{CachedDir}/bsig.satisfier.lock.#{Time.now.nsec}"
 
 	attr_reader :enabled, :mode
 
-	def initialize
+	def initialize(p={})
 		@lock = Mutex.new
 		@enabled = false
 	end
@@ -201,8 +201,7 @@ Sfp::Agent.logger.info "[#{mode}] remote-flaws: #{JSON.generate(pre_remote)}"
 
 	protected
 	def register_satisfier_thread(mode=nil)
-		return if mode == :reset and File.exist?(SatisfierLockFile)
-
+		#return if mode == :reset and File.exist?(SatisfierLockFile)
 		File.open(SatisfierLockFile, File::RDWR|File::CREAT, 0644) { |f|
 			f.flock(File::LOCK_EX)
 			value = (mode == :reset ? 0 : (f.read.to_i + 1))
