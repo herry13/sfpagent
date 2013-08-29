@@ -46,9 +46,9 @@ class Sfp::BSig
 			trap(signal) {
 				Sfp::Agent.logger.info "Shutting down BSig engine"
 				begin
-					run
+					Thread.current.run
 				rescue Exception => e
-					Sfp::Agent.logger.info e
+					Sfp::Agent.logger.info e.to_s
 				end
 				disable
 			}
