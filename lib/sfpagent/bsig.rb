@@ -41,15 +41,12 @@ class Sfp::BSig
 
 	def enable_main_thread
 		@mode = :main
+		@main_thread = Thread.current
 
 		['INT', 'KILL', 'HUP'].each { |signal|
 			trap(signal) {
 				Sfp::Agent.logger.info "Shutting down BSig engine"
-				begin
-					Thread.current.run
-				rescue Exception => e
-					Sfp::Agent.logger.info e.to_s
-				end
+				@main_thread.run
 				disable
 			}
 		}
