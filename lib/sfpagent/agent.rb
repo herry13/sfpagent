@@ -43,15 +43,6 @@ module Sfp
 			@@logger
 		end
 
-		def self.check_config(p={})
-			# check modules directory, and create it if it's not exist
-			p[:modules_dir] = "#{CachedDir}/modules" if p[:modules_dir].to_s.strip == ''
-			p[:modules_dir] = File.expand_path(p[:modules_dir].to_s)
-			p[:modules_dir].chop! if p[:modules_dir][-1,1] == '/'
-			Dir.mkdir(p[:modules_dir], 0700) if not File.exists?(p[:modules_dir])
-			p
-		end
-
 		# Start the agent.
 		#
 		# options:
@@ -62,14 +53,28 @@ module Sfp
 		#	:keyfile
 		#
 		def self.start(p={})
+			Process.daemon
+
 			begin
-				@@config = p = check_config(p)
-	
+				# check modules directory, and create it if it's not exist
+				p[:modules_dir] = File.expand_path(p[:modules_dir] ? p[:modules_dir].to_s : "#{CachedDir}/modules")
+				Dir.mkdir(p[:modules_dir], 0700) if not File.exist?(p[:modules_dir])
+				@@config = p
+
+				# load modules from cached directory
+				load_modules(p)
+
+				# reload model
+				build_model({:complete => true})
+
 				# create web server
 				server_type = (p[:daemon] ? WEBrick::Daemon : WEBrick::SimpleServer)
 				port = (p[:port] ? p[:port] : DefaultPort)
-				config = {:Host => '0.0.0.0', :Port => port, :ServerType => server_type,
-				          :Logger => Sfp::Agent.logger }
+				config = { :Host => '0.0.0.0',
+				           :Port => port,
+				           :ServerType => server_type,
+				           :pid => '/tmp/webrick.pid',
+				           :Logger => Sfp::Agent.logger }
 				if p[:ssl]
 					config[:SSLEnable] = true
 					config[:SSLVerifyClient] = OpenSSL::SSL::VERIFY_NONE
@@ -80,13 +85,7 @@ module Sfp
 				server = WEBrick::HTTPServer.new(config)
 				server.mount("/", Sfp::Agent::Handler, Sfp::Agent.logger)
 
-				# load modules from cached directory
-				load_modules(p)
-
-				# reload model
-				build_model({:complete => true})
-
-				# trap stop-signal
+				# trap signal
 				['INT', 'KILL', 'HUP'].each { |signal|
 					trap(signal) {
 						Sfp::Agent.logger.info "Shutting down web server"
@@ -94,38 +93,30 @@ module Sfp
 					}
 				}
 
-				# start web server
+				# send request to local web server to save its PID
 				fork {
-					# start BSig engine to be used by satisfier threads
-					bsig_engine.start
-
-					# start web server
-					server.start
+					sleep 0.5
+					1.upto(5) do |i|
+						begin
+							NetHelper.get_data('127.0.0.1', config[:Port], '/pid')
+							break if File.exist?(PIDFile)
+						rescue
+							sleep (i*i)
+						end
+					end
+					puts "SFP Agent is running with PID #{File.read(PIDFile)}" if File.exist?(PIDFile)
 				}
 
-				# start BSig main thread
-				bsig_pid = fork { bsig_engine.start(:main) }
-				puts "BSig Engine is running with PID #{bsig_pid}"
-				File.open(BSigPIDFile, 'w') { |f| f.write(bsig_pid.to_s) }
+				# start BSig's main thread in a separate process
+				fork {
+					bsig_engine.enable({:mode => :main})
+				}
 
-				# send request to save PID
-				pid = nil
-				tries = 1
-				begin
-					begin
-						NetHelper.get_data('127.0.0.1', config[:Port], '/pid')
-						pid = File.read(PIDFile) if File.exist?(PIDFile)
-					rescue
-						sleep tries
-					end
-					tries += 1
-				end until not pid.nil? or tries >= 5
+				# enable BSig's satisfier
+				bsig_engine.enable({:mode => :satisfier})
 
-				if not pid.nil?
-					puts "SFP Agent is running with PID #{File.read(PIDFile)}" if File.exist?(PIDFile)
-				else
-					Sfp::Agent.logger.warn "Cannot request PID"
-				end
+				# start web server
+				server.start
 
 			rescue Exception => e
 				Sfp::Agent.logger.error "Starting the agent [Failed] #{e}\n#{e.backtrace.join("\n")}"
@@ -140,7 +131,7 @@ module Sfp
 			pid = (File.exist?(PIDFile) ? File.read(PIDFile).to_i : nil)
 			if not pid.nil? and `ps h #{pid}`.strip =~ /.*sfpagent.*/
 				Process.kill('HUP', pid)
-				puts "Stopping SFP Agent with PID #{pid} [OK]"
+				puts "Stopping SFP Agent with PID #{pid}"
 				File.delete(PIDFile) if File.exist?(PIDFile)
 			else
 				puts "SFP Agent is not running."
@@ -150,7 +141,7 @@ module Sfp
 			pid_bsig = (File.exist?(BSigPIDFile) ? File.read(BSigPIDFile).to_i : nil)
 			if not pid_bsig.nil? and `ps h #{pid_bsig}`.strip =~ /.*sfpagent.*/
 				Process.kill('HUP', pid_bsig)
-				puts "Stopping BSig engine with PID #{pid_bsig} [OK]"
+				puts "Stopping BSig engine with PID #{pid_bsig}"
 				File.delete(BSigPIDFile) if File.exist?(BSigPIDFile)
 			else
 				puts "BSig engine is not running."

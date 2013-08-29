@@ -10,51 +10,54 @@ class Sfp::BSig
 	CachedDir = (Process.euid == 0 ? '/var/sfpagent' : File.expand_path('~/.sfpagent'))
 	SatisfierLockFile = CachedDir + '/bsig.satisfier.lock'
 
-	attr_accessor :enabled
+	attr_accessor :enabled, :mode
 
 	def initialize
 		@lock = Mutex.new
 		@enabled = false
 	end
 
-	def stop
+	def disable
 		@enabled = false
-		@mode = nil
 	end
 
-	def start(mode=:satisfier)
+	def enable(p={})
 		@lock.synchronize {
-			if @enabled
-				Sfp::Agent.logger.info "BSig engine [#{@mode.to_s}] is already running!"
-				return
-			end
+			return if @enabled
 			@enabled = true
 		}
 
-		@mode = mode
-
-		if mode == :main
-			['INT', 'KILL', 'HUP'].each { |signal|
-				trap(signal) {
-					#wakeup
-					Sfp::Agent.logger.info "Shutting down BSig engine"
-					stop
-				}
-			}
-			register_satisfier_thread(:reset)
-
-			Sfp::Agent.logger.info "[main] BSig engine is running."
-
-			self.execute_model
-
-			#File.delete(SatisfierLockFile) if File.exist?(SatisfierLockFile)
-	
-			Sfp::Agent.logger.info "[main] BSig engine has stopped."
-
-		else
-			Sfp::Agent.logger.info "[satisfier] BSig engine is enabled."
-
+		if p[:mode] == :main
+			enable_main_thread
+		elsif p[:mode] == :satisfier
+			enable_satisfier_thread
 		end
+	end
+
+	def enable_satisfier_thread
+		@mode = :satisfier
+		Sfp::Agent.logger.info "[satisfier] BSig engine is enabled."
+	end
+
+	def enable_main_thread
+		@mode = :main
+
+		['INT', 'KILL', 'HUP'].each { |signal|
+			trap(signal) {
+				Sfp::Agent.logger.info "Shutting down BSig engine"
+				disable
+			}
+		}
+		register_satisfier_thread(:reset)
+
+		Sfp::Agent.logger.info "[main] BSig engine is running."
+
+		puts "BSig Engine is running with PID #{$$}"
+		File.open(Sfp::Agent::BSigPIDFile, 'w') { |f| f.write($$.to_s) }
+
+		self.execute_model
+
+		Sfp::Agent.logger.info "[main] BSig engine has stopped."
 	end
 
 	def execute_model
@@ -115,7 +118,6 @@ Sfp::Agent.logger.info "[#{mode}] Flaws: #{JSON.generate(flaws)}"
 Sfp::Agent.logger.info "[#{mode}] Selected operator: #{JSON.generate(operator)}"
 		}
 
-		#@lock.synchronize { operator['selected'] = true }
 		next_pi = pi + 1
 		pre_local, pre_remote = split_preconditions(operator)
 
