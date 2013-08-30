@@ -121,7 +121,7 @@ class Sfp::BSig
 			return :ongoing if operator['selected']
 			operator['selected'] = true
 		}
-Sfp::Agent.logger.info "[#{@mode}] Selected operator: #{JSON.generate(operator)}"
+Sfp::Agent.logger.info "[#{@mode}] Selected operator: #{operator['name']}" #{JSON.generate(operator)}"
 
 		next_pi = pi + 1
 		pre_local, pre_remote = split_preconditions(operator)
