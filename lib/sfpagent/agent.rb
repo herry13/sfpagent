@@ -754,8 +754,6 @@ Sfp::Agent.logger.info "modules dir: " + p[:modules_dir]
 			def satisfy_bsig_request(p={})
 				return [400, '', ''] if not p[:query]
 
-Sfp::Agent.logger.info Sfp::Agent.bsig_engine.to_s
-
 				return [500, '', ''] if Sfp::Agent.bsig_engine.nil?
 
 				req = p[:query]
