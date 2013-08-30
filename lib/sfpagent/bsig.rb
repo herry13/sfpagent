@@ -121,8 +121,8 @@ class Sfp::BSig
 		return :failure if operator.nil?
 
 Sfp::Agent.logger.info "[#{@mode}] Flaws: #{JSON.generate(flaws)}"
-		return :ongoing if not lock_operator(operator)
 Sfp::Agent.logger.info "[#{@mode}] Selected operator: #{operator['name']}"
+		return :ongoing if not lock_operator(operator)
 
 		next_pi = pi + 1
 		pre_local, pre_remote = split_preconditions(operator)
