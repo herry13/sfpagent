@@ -120,6 +120,7 @@ class Sfp::BSig
 		operator = select_operator(flaws, operators, pi)
 		return :failure if operator.nil?
 
+Sfp::Agent.logger.info "[#{@mode}] Flaws: #{JSON.generate(flaws)}"
 		return :ongoing if not lock_operator(operator)
 Sfp::Agent.logger.info "[#{@mode}] Selected operator: #{operator['name']}"
 
@@ -153,22 +154,6 @@ Sfp::Agent.logger.info "[#{@mode}] Selected operator: #{operator['name']}"
 		
 		unlock_operator(operator) if not operator.nil?
 		:repaired
-	end
-
-	def lock_operator(operator)
-		@lock.synchronize {
-			operator_lock_file = "#{CachedDir}/operator.#{operator['name']}.lock"
-			return false if File.exist?(operator_lock_file)
-			File.open(operator_lock_file, 'w') { |f| f.write('1') }
-			return true
-		}
-	end
-
-	def unlock_operator(operator)
-		@lock.synchronize {
-			operator_lock_file = "#{CachedDir}/operator.#{operator['name']}.lock"
-			File.delete(operator_lock_file) if File.exist?(operator_lock_file)
-		}
 	end
 
 	def achieve_remote_goal(id, goal, pi)
@@ -236,6 +221,22 @@ Sfp::Agent.logger.info "[#{@mode}] Selected operator: #{operator['name']}"
 		}
 	end
 
+	def lock_operator(operator)
+		@lock.synchronize {
+			operator_lock_file = "#{CachedDir}/operator.#{operator['name']}.lock"
+			return false if File.exist?(operator_lock_file)
+			File.open(operator_lock_file, 'w') { |f| f.write('1') }
+			return true
+		}
+	end
+
+	def unlock_operator(operator)
+		@lock.synchronize {
+			operator_lock_file = "#{CachedDir}/operator.#{operator['name']}.lock"
+			File.delete(operator_lock_file) if File.exist?(operator_lock_file)
+		}
+	end
+
 	def split_goal_by_agent(goal)
 		agents = Sfp::Agent.get_agents
 		agent_goal = {}
@@ -252,6 +253,8 @@ Sfp::Agent.logger.info "[#{@mode}] Selected operator: #{operator['name']}"
 		data = {'id' => id,
 		        'goal' => JSON.generate(g),
 		        'pi' => pi}
+Sfp::Agent.logger.info "[#{@mode}] Request goal to: #{agent_name} [WAIT]"
+
 		code, _ = put_data(agent['sfpAddress'], agent['sfpPort'], SatisfierPath, data)
 
 Sfp::Agent.logger.info "[#{@mode}] Request goal to: #{agent_name} - status: " + code.to_s
