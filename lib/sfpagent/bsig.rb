@@ -46,7 +46,10 @@ class Sfp::BSig
 				disable
 			}
 		}
+
 		register_satisfier_thread(:reset)
+
+		system("rm -f #{CachedDir}/operator.*.lock")
 
 		Sfp::Agent.logger.info "[#{@mode}] BSig engine is running."
 
@@ -118,8 +121,8 @@ class Sfp::BSig
 		return :failure if operator.nil?
 
 		@lock.synchronize {
-			return :ongoing if operator['selected']
-			operator['selected'] = true
+			return :ongoing if not lock_operator(operator) # operator['selected']
+			#operator['selected'] = true
 		}
 Sfp::Agent.logger.info "[#{@mode}] Selected operator: #{operator['name']}" #{JSON.generate(operator)}"
 
@@ -152,7 +155,24 @@ Sfp::Agent.logger.info "[#{@mode}] local-flaws: #{JSON.generate(pre_local)}, rem
 		:repaired
 
 	ensure
-		@lock.synchronize { operator['selected'] = false } if not operator.nil?
+		#@lock.synchronize { operator['selected'] = false } if not operator.nil?
+		unlock_operator(operator) if not operator.nil?
+	end
+
+	def lock_operator(operator)
+		@lock.synchronize {
+			operator_lock_file = "#{CachedDir}/operator.#{operator['name']}.lock"
+			return false if File.exist?(operator_lock_file)
+			File.open(operator_lock_file, 'w') { |f| f.write('1') }
+			return true
+		}
+	end
+
+	def unlock_operator(operator)
+		@lock.synchronize {
+			operator_lock_file = "#{CachedDir}/operator.#{operator['name']}.lock"
+			File.delete(operator_lock_file) if File.exist?(operator_lock_file)
+		}
 	end
 
 	def achieve_remote_goal(id, goal, pi)
