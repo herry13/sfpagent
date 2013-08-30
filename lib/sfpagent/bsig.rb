@@ -129,7 +129,7 @@ Sfp::Agent.logger.info "[#{@mode}] Selected operator: #{operator['name']}" #{JSO
 		next_pi = pi + 1
 		pre_local, pre_remote = split_preconditions(operator)
 
-Sfp::Agent.logger.info "[#{@mode}] local-flaws: #{JSON.generate(pre_local)}, remote-flaws: #{JSON.generate(pre_remote)}"
+#Sfp::Agent.logger.info "[#{@mode}] local-flaws: #{JSON.generate(pre_local)}, remote-flaws: #{JSON.generate(pre_remote)}"
 
 		status = nil
 		tries = MaxTries
