@@ -85,7 +85,7 @@ class Sfp::BSig
 				end
 
 				if previous_status != status
-					Sfp::Agent.logger.info "[main] model - status: " + status.to_s
+					Sfp::Agent.logger.info "[main] BSig engine - status: " + status.to_s
 					previous_status = status
 				end
 			rescue Exception => e
