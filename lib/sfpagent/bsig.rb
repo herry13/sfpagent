@@ -120,10 +120,10 @@ class Sfp::BSig
 		operator = select_operator(flaws, operators, pi)
 		return :failure if operator.nil?
 
-		@lock.synchronize {
+		#@lock.synchronize {
 			return :ongoing if not lock_operator(operator) # operator['selected']
 			#operator['selected'] = true
-		}
+		#}
 Sfp::Agent.logger.info "[#{@mode}] Selected operator: #{operator['name']}" #{JSON.generate(operator)}"
 
 		next_pi = pi + 1
