@@ -124,7 +124,7 @@ Sfp::Agent.logger.info "[#{@mode}] Flaws: #{JSON.generate(flaws)}"
 Sfp::Agent.logger.info "[#{@mode}] Selected operator: #{operator['name']} #{pi}"
 		return :ongoing if not lock_operator(operator)
 
-		next_pi = pi + 1
+		next_pi = operator['pi'] + 1
 		pre_local, pre_remote = split_preconditions(operator)
 
 #Sfp::Agent.logger.info "[#{@mode}] local-flaws: #{JSON.generate(pre_local)}, remote-flaws: #{JSON.generate(pre_remote)}"
