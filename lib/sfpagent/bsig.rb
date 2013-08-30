@@ -72,6 +72,7 @@ class Sfp::BSig
 	
 				bsig = Sfp::Agent.get_bsig
 				if bsig.nil?
+					status = :no_bsig
 					sleep BSigSleepTime
 				else
 					status = achieve_local_goal(bsig['id'], bsig['goal'], bsig['operators'], 1, :main)
@@ -81,11 +82,11 @@ class Sfp::BSig
 					elsif status == :no_flaw
 						sleep BSigSleepTime
 					end
+				end
 
-					if previous_status != status
-						Sfp::Agent.logger.info "[main] model - status: " + status.to_s
-						previous_status = status
-					end
+				if previous_status != status
+					Sfp::Agent.logger.info "[main] model - status: " + status.to_s
+					previous_status = status
 				end
 			rescue Exception => e
 				Sfp::Agent.logger.error "Error on executing BSig model\n#{e}\n#{e.backtrace.join("\n")}"
