@@ -120,11 +120,8 @@ class Sfp::BSig
 		operator = select_operator(flaws, operators, pi)
 		return :failure if operator.nil?
 
-		#@lock.synchronize {
-			return :ongoing if not lock_operator(operator) # operator['selected']
-			#operator['selected'] = true
-		#}
-Sfp::Agent.logger.info "[#{@mode}] Selected operator: #{operator['name']}" #{JSON.generate(operator)}"
+		return :ongoing if not lock_operator(operator)
+Sfp::Agent.logger.info "[#{@mode}] Selected operator: #{operator['name']}"
 
 		next_pi = pi + 1
 		pre_local, pre_remote = split_preconditions(operator)
@@ -146,17 +143,16 @@ Sfp::Agent.logger.info "[#{@mode}] Selected operator: #{operator['name']}" #{JSO
 			tries -= 1
 		end until tries <= 0
 
-		return :failure if status != :no_flaw
+		if status != :no_flaw or
+			not achieve_remote_goal(id, pre_remote, next_pi) or
+			not invoke(operator)
 
-		return :failure if not achieve_remote_goal(id, pre_remote, next_pi)
-
-		return :failure if not invoke(operator)
+			unlock_operator(operator) if not operator.nil?
+			return :failure
+		end
 		
-		:repaired
-
-	ensure
-		#@lock.synchronize { operator['selected'] = false } if not operator.nil?
 		unlock_operator(operator) if not operator.nil?
+		:repaired
 	end
 
 	def lock_operator(operator)
