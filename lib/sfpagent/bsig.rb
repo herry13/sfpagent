@@ -163,8 +163,7 @@ Sfp::Agent.logger.info "[#{mode}] remote-flaws: #{JSON.generate(pre_remote)}"
 			split_goal_by_agent(goal).each do |agent_name,agent_goal|
 				return false if not agents.has_key?(agent_name) or agents[agent_name]['sfpAddress'].to_s == ''
 
-Sfp::Agent.logger.info "send_goal_to_agent #{agent_name} - status: " + code.to_s
-				return false if not send_goal_to_agent(agents[agent_name], id, agent_goal, pi)
+				return false if not send_goal_to_agent(agents[agent_name], id, agent_goal, pi, agent_name)
 			end
 		end
 		true
@@ -235,11 +234,12 @@ Sfp::Agent.logger.info "send_goal_to_agent #{agent_name} - status: " + code.to_s
 		agent_goal
 	end
 
-	def send_goal_to_agent(agent, id, g, pi)
+	def send_goal_to_agent(agent, id, g, pi, agent_name='')
 		data = {'id' => id,
 		        'goal' => JSON.generate(g),
 		        'pi' => pi}
 		code, _ = put_data(agent['sfpAddress'], agent['sfpPort'], SatisfierPath, data)
+Sfp::Agent.logger.info "send_goal_to_agent #{agent_name} - status: " + code.to_s
 		(code == '200')
 	end
 
