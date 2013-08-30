@@ -45,7 +45,6 @@ class Sfp::BSig
 		['INT', 'KILL', 'HUP'].each { |signal|
 			trap(signal) {
 				Sfp::Agent.logger.info "[main] Shutting down BSig engine"
-				File.delete(SatisfierLockFile) if File.exist?(SatisfierLockFile)
 				disable
 			}
 		}
@@ -58,6 +57,7 @@ class Sfp::BSig
 
 		self.execute_model
 
+		File.delete(SatisfierLockFile) if File.exist?(SatisfierLockFile)
 		Sfp::Agent.logger.info "[main] BSig engine has stopped."
 	end
 
@@ -133,7 +133,7 @@ Sfp::Agent.logger.info "[#{mode}] remote-flaws: #{JSON.generate(pre_remote)}"
 		status = nil
 		tries = MaxTries
 		begin
-			status = achieve_local_goal(id, pre_local, operators, next_pi)
+			status = achieve_local_goal(id, pre_local, operators, next_pi, mode)
 			if status == :no_flaw or status == :failure or not @enabled
 				break
 			elsif status == :ongoing
