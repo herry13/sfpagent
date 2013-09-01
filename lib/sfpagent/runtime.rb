@@ -6,21 +6,26 @@ class Sfp::Runtime
 	def initialize(model)
 		@mutex_procedure = Mutex.new
 		@mutex_get_state = Mutex.new
-		@root = model
-		@modules = nil
+		@root = nil
+		set_model(model)
+	end
+
+	def whoami?
+		@model.each { |key,value| return key if key[0,1] != '_' and value['_context'] == 'object' } if !@model.nil?
+		nil
 	end
 
 	def execute_action(action)
+		return false if !defined?(@root) or @root.nil?
+
 		def normalise_parameters(params)
 			p = {}
 			params.each { |k,v| p[k[2,k.length-2]] = v }
 			p
 		end
 
-		self.get_state if not defined?(@modules) or @modules.nil?
-
 		module_path, method_name = action['name'].pop_ref
-		mod = @modules.at?(module_path)[:_self]
+		mod = @root.at?(module_path)[:_self]
 		raise Exception, "Module #{module_path} cannot be found!" if mod.nil?
 		raise Exception, "Cannot execute #{action['name']}!" if not mod.respond_to?(method_name)
 
@@ -34,109 +39,107 @@ class Sfp::Runtime
 		# TODO - check post-execution state for verification
 	end
 
-	def get_state(as_sfp=false)
-		def cleanup(model)
-			model.select { |k,v| k[0,1] != '_' and !(v.is_a?(Hash) and v['_context'] != 'object') }
-		end
-
-		def add_hidden_attributes(model, state)
-			model.each { |k,v|
-				state[k] = v if (k[0,1] == '_' and k != '_parent') or
-					(v.is_a?(Hash) and v['_context'] == 'procedure')
-			}
-		end
-
-		# Load the implementation of an object, and return its current state
-		# @param model a Hash
-		# @return a Hash which is the state of the object
-		#
-		def instantiate_module(model, root, as_sfp=false)
-			# extract class name
-			class_name = model['_isa'].sub(/^\$\./, '')
-
-			# throw an exception if schema's implementation is not exist!
-			raise Exception, "Implementation of schema #{class_name} is not available!" if
-				not Sfp::Module.const_defined?(class_name)
-
-			# create an instance of the schema
-			mod = Sfp::Module::const_get(class_name).new
-			default = cleanup(root.at?(model['_isa']))
-			ruby_model = cleanup(model)
-			mod.init(ruby_model, default)
-
-			# update synchronized list of procedures
-			model.each { |k,v|
-				next if k[0,1] == '_' or not (v.is_a?(Hash) and v['_context'] == 'procedure')
-				mod.synchronized << k if v['_synchronized']
-			}
-
-			# return the object instant
-			mod
-		end
-
-		# Return the state of an object
-		#
-		def get_object_state(model, root, as_sfp=false, path='$')
-			modules = {}
-			state = {}
-			if model['_context'] == 'object' and model['_isa'].to_s.isref
-				if model['_isa'] != '$.Object'
-					# if this model is an instance of a subclass of Object, then
-					# get the current state of this object
-					#modules[:_self] = nil
-					mod = (!defined?(@modules) or @modules.nil? ? nil : @modules.at?(path))
-					if mod.is_a?(Hash)
-						modules[:_self] = mod[:_self]
-					else
-						# the module has not been instantiated yet!
-						modules[:_self] = instantiate_module(model, root, as_sfp)
-					end
-					# update and get the state
-					modules[:_self].update_state
-					state = modules[:_self].state
-					if !mod.nil? and mod.has_key?(:_vars)
-						state.keep_if { |k,v| mod[:_vars].index(k) }
-						modules[:_vars] = mod[:_vars]
-					else
-						modules[:_vars] = state.keys
-					end
-					# set hidden attributes
-					add_hidden_attributes(model, state) if as_sfp
-				end
-			end
-
-			# get the state for each attributes which are not covered by this
-			# object's module
-			(model.keys - state.keys).each do |key|
-				next if key[0,1] == '_'
-				if model[key].is_a?(Hash)
-					modules[key], state[key] = get_object_state(model[key], root, as_sfp, path.push(key)) if
-						model[key]['_context'] == 'object'
-					modules[key]['_parent'] = modules if modules[key].is_a?(Hash)
-				else
-					state[key] = Sfp::Undefined.new
-				end
-			end
-
-			[modules, state]
-		end
-
+	def set_model(model)
 		@mutex_get_state.synchronize {
-			root = Sfp::Helper.deep_clone(@root)
-			root.accept(ParentEliminator)
-			@modules, state = get_object_state(root, root, as_sfp)
-			@modules.accept(ParentGenerator)
-
-			state
+			@model = model
+			if @model.is_a?(Hash)
+				root_model = Sfp::Helper.deep_clone(@model)
+				root_model.accept(ParentEliminator)
+				@root = update_model(root_model, root_model, '$')
+				@root.accept(ParentGenerator)
+			end
 		}
 	end
 
-	def whoami?
-		@root.each { |key,value| return key if key[0,1] != '_' and value['_context'] == 'object' } if !@root.nil?
-		nil
+	def get_state(as_sfp=false)
+		@mutex_get_state.synchronize {
+			update_state(@root)
+			get_object_state(@root, @model)
+		}
 	end
 
 	protected
+	def get_object_state(object, model)
+		# get object's state
+		state = (object.has_key?(:_self) ? object[:_self].state : {})
+
+		# add hidden attributes and procedures
+		model.each { |k,v|
+			state[k] = v if (k[0,1] == '_' and k != '_parent') or
+				(v.is_a?(Hash) and v['_context'] == 'procedure')
+		}
+
+		# accumulate children's state
+		object.each { |name,child|
+			next if name.to_s[0,1] == '_'
+			state[name] = get_object_state(child, model[name])
+		}
+
+		# set state=Sfp::Undefined for each attribute that exists in the model
+		# but not covered by SFP object instants
+		(model.keys - state.keys).each do |name|
+			next if name[0,1] == '_'
+			state[name] = Sfp::Undefined.new
+		end
+
+		state
+	end
+
+	def update_state(object)
+		object[:_self].update_state if not object[:_self].nil?
+		object.each { |k,v| update_state(v) if k.to_s[0,1] != '_' }
+	end
+
+	def update_model(model, root, path)
+		object = {}
+		if model['_context'] == 'object' and model['_isa'].to_s.isref and model['_isa'].to_s != '$.Object'
+			# if this model is an instance of a subclass of Object, then
+			# get the current state of this object
+			obj = (!defined?(@root) or @root.nil? ? nil : @root.at?(path))
+			if obj.is_a?(Hash)
+				object[:_self] = obj[:_self]
+				object[:_self].update_model(model)
+			else
+Sfp::Agent.logger.info "Instantiating object: #{model['_self']}"
+				# the module has not been instantiated yet!
+				object[:_self] = instantiate_sfp_object(model, root)
+			end
+		end
+
+		model.each do |key,child|
+			next if key[0,1] == '_' or not child.is_a?(Hash) or child['_context'] != 'object' or
+				not child['_isa'].to_s.isref or child['_isa'].to_s == '$.Object'
+			object[key] = update_model(child, root, path.push(key))
+		end
+
+		object
+	end
+
+	def instantiate_sfp_object(model, root)
+		# get SFP schema name
+		schema_name = model['_isa'].sub(/^\$\./, '')
+
+		# throw an exception if schema's implementation is not exist!
+		raise Exception, "Implementation of schema #{schema_name} is not available!" if
+			not Sfp::Module.const_defined?(schema_name)
+
+		# create an instance of the schema
+		object = Sfp::Module::const_get(schema_name).new
+
+		# initialize the instance
+		object_model = model.select { |k,v| k[0,1] != '_' and
+			not (v.is_a?(Hash) and v['_context'] == 'procedure') }
+		object.init(model)
+		
+		# update list of synchronized procedures
+		model.each { |k,v|
+			next if k[0,1] == '_' or not (v.is_a?(Hash) and v['_context'] == 'procedure')
+			object.synchronized << k if v['_synchronized']
+		}
+
+		object
+	end
+
 	ParentEliminator = Sfp::Visitor::ParentEliminator.new
 
 	ParentGenerator = Object.new
@@ -144,5 +147,4 @@ class Sfp::Runtime
 		value['_parent'] = parent if value.is_a?(Hash)
 		true
 	end
-
 end

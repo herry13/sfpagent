@@ -77,7 +77,7 @@ Sfp::Agent.logger.info "[main] execute model - status: " + status.to_s
 					end
 				end
 			rescue Exception => e
-				Sfp::Agent.logger.error "Error on executing BSig model #{e}"
+				Sfp::Agent.logger.error "Error on executing BSig model\n#{e}\n#{e.backtrace.join("\n")}"
 				sleep BSigSleepTime
 			end
 		end
@@ -249,6 +249,7 @@ Sfp::Agent.logger.info "send_goal_to_agent - status: " + code.to_s
 	end
 
 	def compute_flaws(goal, current)
+		return goal.clone if current.nil?
 		flaws = {}
 		goal.each { |var,val|
 			current_value = current.at?(var)

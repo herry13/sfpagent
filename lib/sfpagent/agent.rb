@@ -7,6 +7,7 @@ require 'uri'
 require 'net/http'
 require 'logger'
 require 'json'
+require 'digest/md5'
 
 module Sfp
 	module Agent
@@ -30,13 +31,13 @@ module Sfp
 		                                     WEBrick::BasicLog::FATAL ||
 		                                     WEBrick::BasicLog::WARN)
 
+		@@current_model_hash = nil
+
 		@@bsig = nil
 		@@bsig_modified_time = nil
 		@@bsig_engine = Sfp::BSig.new # create BSig engine instance
 
-		@@model_lock = Mutex.new
 		@@runtime_lock = Mutex.new
-		@@bsig_model_lock = Mutex.new
 
 		def self.logger
 			@@logger
@@ -190,14 +191,25 @@ module Sfp
 		#
 		def self.set_model(model)
 			begin
-				@@model_lock.synchronize {
-					Sfp::Agent.logger.info "Setting the model [Wait]"
-					File.open(ModelFile, 'w', 0600) { |f|
-						f.write(JSON.generate(model))
+				Sfp::Agent.logger.info "Setting the model [Wait]"
+
+				# generate MD5 hash for the new model
+				data = JSON.generate(model)
+				new_model_hash = Digest::MD5.hexdigest(data)
+
+				# save the new model if it's not same with the existing one
+				if Digest::MD5.hexdigest(data) != @@current_model_hash
+					File.open(ModelFile, File::RDWR|File::CREAT, 0600) { |f|
+						f.flock(File::LOCK_EX)
+						f.rewind
+						f.write(data)
 						f.flush
+						f.truncate(f.pos)
 					}
-				}
-				reload_model
+					reload_model
+				else
+					Sfp::Agent.logger.info "The model is not changed."
+				end
 				Sfp::Agent.logger.info "Setting the model [OK]"
 				return true
 			rescue Exception => e
@@ -206,34 +218,56 @@ module Sfp
 			false
 		end
 
+=begin
 		# Return the model which is read from cached file.
 		#
 		def self.get_model
 			return nil if not File.exist?(ModelFile)
 			begin
-				@@model_lock.synchronize {
-					return JSON[File.read(ModelFile)]
-				}
+				return JSON[File.read(ModelFile)]
 			rescue Exception => e
 				Sfp::Agent.logger.error "Get the model [Failed] #{e}\n#{e.backtrace.join("\n")}"
 			end
 			false
+		end
+=end
+
+		# Reload the model from cached file.
+		#
+		def self.reload_model
+			if not File.exist?(ModelFile)
+				Sfp::Agent.logger.info "There is no model in cache."
+			else
+				begin
+					@@runtime_lock.synchronize {
+						data = File.read(ModelFile)
+						@@current_model_hash = Digest::MD5.hexdigest(data)
+						#@@runtime = Sfp::Runtime.new(JSON[data])
+						if !defined?(@@runtime) or @@runtime.nil?
+							@@runtime = Sfp::Runtime.new(JSON[data])
+						else
+							@@runtime.set_model(JSON[data])
+						end
+					}
+					Sfp::Agent.logger.info "Reloading the model in cache [OK]"
+				rescue Exception => e
+					Sfp::Agent.logger.error "Reloading the model in cache [Failed] #{e}\n#{e.backtrace.join("\n")}"
+				end
+			end
 		end
 
 		# Setting a new BSig model: set @@bsig variable, and save in cached file
 		#
 		def self.set_bsig(bsig)
 			begin
-				@@bsig_model_lock.synchronize {
+				File.open(BSigFile, File::RDWR|File::CREAT, 0600) { |f|
+					f.flock(File::LOCK_EX)
 					Sfp::Agent.logger.info "Setting the BSig model [Wait]"
-					if bsig.nil?
-						File.delete(BSigFile) if File.exist?(BSigFile)
-					else
-						File.open(BSigFile, 'w', 0600) { |f|
-							f.write(JSON.generate(bsig))
-							f.flush
-						}
-					end
+					f.rewind
+					data = (bsig.nil? ? '' : JSON.generate(bsig))
+					f.write(data)
+					f.flush
+					f.truncate(f.pos)
 				}
 				Sfp::Agent.logger.info "Setting the BSig model [OK]"
 				return true
@@ -250,11 +284,10 @@ module Sfp
 			return @@bsig if File.mtime(BSigFile) == @@bsig_modified_time
 
 			begin
-				@@bsig_model_lock.synchronize {
-					@@bsig = JSON[File.read(BSigFile)]
-					@@bsig_modified_time = File.mtime(BSigFile)
-					return @@bsig
-				}
+				data = File.read(BSigFile)
+				@@bsig = (data.length > 0 ? JSON[data] : nil)
+				@@bsig_modified_time = File.mtime(BSigFile)
+				return @@bsig
 			rescue Exception => e
 				Sfp::Agent.logger.error "Get the BSig model [Failed] #{e}\n#{e.backtrace.join("\n")}"
 			end
@@ -265,24 +298,8 @@ module Sfp
 			@@bsig_engine
 		end
 
-		# Reload the model from cached file.
-		#
-		def self.reload_model
-			model = get_model
-			if model.nil?
-				Sfp::Agent.logger.info "There is no model in cache."
-			else
-				begin
-					@@runtime_lock.synchronize { @@runtime = Sfp::Runtime.new(model) }
-					Sfp::Agent.logger.info "Reloading the model in cache [OK]"
-				rescue Exception => e
-					Sfp::Agent.logger.error "Reloading the model in cache [Failed] #{e}\n#{e.backtrace.join("\n")}"
-				end
-			end
-		end
-
 		def self.whoami?
-			return nil if @@runtime.nil?
+			return nil if !defined?(@@runtime) or @@runtime.nil?
 			@@runtime.whoami?
 		end
 
@@ -290,10 +307,9 @@ module Sfp
 		#
 		def self.get_state(as_sfp=true)
 			@@runtime_lock.synchronize {
-Sfp::Agent.logger.info "Sfp::Agent.get_state"
 				return nil if !defined?(@@runtime) or @@runtime.nil?
 				begin
-					@@runtime.get_state if @@runtime.modules.nil?
+					#@@runtime.get_state if @@runtime.modules.nil?
 					return @@runtime.get_state(as_sfp)
 				rescue Exception => e
 					Sfp::Agent.logger.error "Get state [Failed] #{e}\n#{e.backtrace.join("\n")}"

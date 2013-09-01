@@ -5,16 +5,20 @@ module Sfp::Resource
 	attr_accessor :parent, :synchronized
 	attr_reader :state, :model
 
-	def init(model, default)
+	def init(model={})
 		@model = {}
-		model.each { |k,v| @model[k] = v }
 		@state = {}
-		@default = {}
 		@synchronized = []
+
+		update_model(model)
 	end
 
 	def update_state
 		@state = {}
+	end
+
+	def update_model(model)
+		model.each { |k,v| @model[k] = v }
 	end
 
 	def apply(p={})
