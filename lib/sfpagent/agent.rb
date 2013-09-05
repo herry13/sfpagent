@@ -61,7 +61,6 @@ module Sfp
 				p[:modules_dir] = File.expand_path(p[:modules_dir].to_s.strip != '' ? p[:modules_dir].to_s : "#{CachedDir}/modules")
 				Dir.mkdir(p[:modules_dir], 0700) if not File.exist?(p[:modules_dir])
 				@@config = p
-Sfp::Agent.logger.info "modules dir: " + p[:modules_dir]
 
 				# load modules from cached directory
 				load_modules(p)
