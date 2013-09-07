@@ -3,7 +3,7 @@ require 'thread'
 class Sfp::BSig
 	include Nuri::Net::Helper
 
-	BSigSleepTime = 5
+	SleepTime = 5
 	MaxTries = 5
 
 	SatisfierPath = '/bsig/satisfier'
@@ -74,14 +74,14 @@ class Sfp::BSig
 				bsig = Sfp::Agent.get_bsig
 				if bsig.nil?
 					status = :no_bsig
-					sleep BSigSleepTime
+					sleep SleepTime
 				else
 					status = achieve_local_goal(bsig['id'], bsig['goal'], bsig['operators'], 1)
 					if status == :failure
 						Sfp::Agent.logger.error "[#{@mode}] Executing BSig model [Failed]"
-						sleep BSigSleepTime
+						sleep SleepTime
 					elsif status == :no_flaw
-						sleep BSigSleepTime
+						sleep SleepTime
 					end
 				end
 
@@ -91,7 +91,7 @@ class Sfp::BSig
 				end
 			rescue Exception => e
 				Sfp::Agent.logger.error "[#{@mode}] Error on executing BSig model\n#{e}\n#{e.backtrace.join("\n")}"
-				sleep BSigSleepTime
+				sleep SleepTime
 			end
 		end
 	end
@@ -120,7 +120,7 @@ class Sfp::BSig
 		operator = select_operator(flaws, operators, pi)
 		return :failure if operator.nil?
 
-#Sfp::Agent.logger.info "[#{@mode}] Flaws: #{JSON.generate(flaws)}"
+#Sfp::Agent.logger.info "[#{@mode}] Flaws: #{JSON.generate(flaws)}"  # debugging
 
 		return :ongoing if not lock_operator(operator)
 
@@ -129,7 +129,7 @@ class Sfp::BSig
 		next_pi = operator['pi'] + 1
 		pre_local, pre_remote = split_preconditions(operator)
 
-#Sfp::Agent.logger.info "[#{@mode}] local-flaws: #{JSON.generate(pre_local)}, remote-flaws: #{JSON.generate(pre_remote)}"
+#Sfp::Agent.logger.info "[#{@mode}] local-flaws: #{JSON.generate(pre_local)}, remote-flaws: #{JSON.generate(pre_remote)}"  # debugging
 
 		status = nil
 		tries = MaxTries
@@ -138,7 +138,7 @@ class Sfp::BSig
 			if status == :no_flaw or status == :failure or not @enabled
 				break
 			elsif status == :ongoing
-				sleep BSigSleepTime
+				sleep SleepTime
 				tries += 1
 			elsif status == :repaired
 				tries = MaxTries
@@ -186,7 +186,7 @@ class Sfp::BSig
 			if status == :no_flaw or status == :failure or not @enabled
 				break
 			elsif status == :ongoing
-				sleep BSigSleepTime
+				sleep SleepTime
 				tries += 1
 			elsif status == :repaired
 				tries = MaxTries
@@ -255,11 +255,12 @@ class Sfp::BSig
 		data = {'id' => id,
 		        'goal' => JSON.generate(g),
 		        'pi' => pi}
-Sfp::Agent.logger.info "[#{@mode}] Request goal to: #{agent_name} [WAIT]"
+
+		Sfp::Agent.logger.info "[#{@mode}] Request goal to: #{agent_name} [WAIT]"
 
 		code, _ = put_data(agent['sfpAddress'], agent['sfpPort'], SatisfierPath, data)
 
-Sfp::Agent.logger.info "[#{@mode}] Request goal to: #{agent_name} - status: " + code.to_s
+		Sfp::Agent.logger.info "[#{@mode}] Request goal to: #{agent_name} - status: #{code}"
 
 		(code == '200')
 	end

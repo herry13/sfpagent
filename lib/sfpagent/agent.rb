@@ -47,13 +47,16 @@ module Sfp
 		# Start the agent.
 		#
 		# options:
-		#	:daemon => true if running as a daemon, false if as a normal application
-		#	:port
-		#	:ssl
-		#	:certfile
-		#	:keyfile
+		#	:daemon   => true if running as a daemon, false if as a console application
+		#	:port     => port of web server will listen to
+		#	:ssl      => set true to enable HTTPS
+		#	:certfile => certificate file path for HTTPS
+		#	:keyfile  => key file path for HTTPS
 		#
 		def self.start(p={})
+			Sfp::Agent.logger.info "Starting SFP Agent daemons."
+			puts "Starting SFP Agent daemons."
+
 			Process.daemon
 
 			begin
@@ -129,7 +132,7 @@ module Sfp
 		# Stop the agent's daemon.
 		#
 		def self.stop
-			# stopping web server (main thread)
+			# stopping web server
 			pid = (File.exist?(PIDFile) ? File.read(PIDFile).to_i : nil)
 			if not pid.nil? and `ps h #{pid}`.strip =~ /.*sfpagent.*/
 				Process.kill('HUP', pid)
@@ -145,11 +148,16 @@ module Sfp
 				Process.kill('HUP', pid_bsig)
 				puts "Stopping BSig engine with PID #{pid_bsig}"
 				File.delete(BSigPIDFile) if File.exist?(BSigPIDFile)
+				sleep (Sfp::BSig::SleepTime + 0.5)
 			else
 				puts "BSig engine is not running."
 			end
 
-			Sfp::Agent.logger.info "SFP Agent daemon has been stopped."
+			# kill the processes if they are still running
+			system("kill -9 #{pid} 1>/dev/null 2>/dev/null")
+			system("kill -9 #{pid_bsig} 1>/dev/null 2>/dev/null")
+
+			Sfp::Agent.logger.info "SFP Agent daemons have stopped."
 		end
 
 		# Print the status of the agent.
@@ -201,7 +209,6 @@ module Sfp
 					build_model
 					Sfp::Agent.logger.info "Setting the model [OK]"
 				else
-					#Sfp::Agent.logger.info "The model is not changed."
 				end
 				return true
 			rescue Exception => e
@@ -501,7 +508,7 @@ module Sfp
 			@@agents_data = JSON[File.read(AgentsDataFile)]
 		end
 
-		# A class that handles each request.
+		# A class that handles HTTP request.
 		#
 		class Handler < WEBrick::HTTPServlet::AbstractServlet
 			def initialize(server, logger)
@@ -511,11 +518,13 @@ module Sfp
 			# Process HTTP Get request
 			#
 			# uri:
-			#	/pid => save daemon's PID to a file
-			#	/state => return the current state
-			#	/model => return the current model
+			#	/pid      => save daemon's PID to a file (only requested from localhost)
+			#	/state    => return the current state
+			#	/model    => return the current model
 			#	/schemata => return the schemata of a module
-			#	/modules => return a list of available modules
+			#	/modules  => return a list of available modules
+			#  /agents   => return a list of agents database
+			#  /log      => return last 100 lines of log file
 			#
 			def do_GET(request, response)
 				status = 400
@@ -587,12 +596,17 @@ module Sfp
 				response.body = body
 			end
 
+			# Handle HTTP Put request
+			#
 			# uri:
-			#	/model => receive a new model and save to cached file
-			#	/modules => save the module if parameter "module" is provided
-			#               delete the module if parameter "module" is not provided
-			#	/agents => save the agents' list if parameter "agents" is provided
-			#	           delete all agents if parameter "agents" is not provided
+			#	/model          => receive a new model and save to cached file
+			#	/modules        => save the module if parameter "module" is provided
+			#                     delete the module if parameter "module" is not provided
+			#	/agents         => save the agents' list if parameter "agents" is provided
+			#	                   delete all agents if parameter "agents" is not provided
+			#  /bsig           => receive BSig model and receive it in cached directory
+			#  /bsig/satisfier => receive goal request from other agents and then start
+			#                     a satisfier thread to try to achieve it
 			def do_PUT(request, response)
 				status = 400
 				content_type, body = ''
