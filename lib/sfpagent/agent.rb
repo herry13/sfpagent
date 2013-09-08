@@ -57,8 +57,8 @@ module Sfp
 		#	:keyfile  => key file path for HTTPS
 		#
 		def self.start(p={})
-			Sfp::Agent.logger.info "Starting SFP Agent daemons."
-			puts "Starting SFP Agent daemons."
+			Sfp::Agent.logger.info "Starting SFP Agent daemons..."
+			puts "Starting SFP Agent daemons..."
 
 			Process.daemon
 
@@ -75,7 +75,7 @@ module Sfp
 				update_model({:rebuild => true})
 
 				# create web server
-				server_type = (p[:daemon] ? WEBrick::Daemon : WEBrick::SimpleServer)
+				server_type = WEBrick::SimpleServer
 				port = (p[:port] ? p[:port] : DefaultPort)
 				config = { :Host => '0.0.0.0',
 				           :Port => port,
@@ -95,35 +95,16 @@ module Sfp
 				# trap signal
 				['INT', 'KILL', 'HUP'].each { |signal|
 					trap(signal) {
-						Sfp::Agent.logger.info "Shutting down web server"
-						bsig_engine.disable
+						Sfp::Agent.logger.info "Shutting down web server and BSig engine..."
+						bsig_engine.stop
 						server.shutdown
 					}
 				}
 
-				# send request to local web server to save its PID
-				fork {
-					sleep 0.5
-					1.upto(5) do |i|
-						begin
-							NetHelper.get_data('127.0.0.1', config[:Port], '/pid')
-							break if File.exist?(PIDFile)
-						rescue
-							sleep (i*i)
-						end
-					end
-					puts "SFP Agent is running with PID #{File.read(PIDFile)}" if File.exist?(PIDFile)
-				}
+				File.open(PIDFile, 'w', 0644) { |f| f.write($$.to_s) }
 
-				# start BSig's main thread in a separate process
-				fork {
-					bsig_engine.enable({:mode => :main})
-				}
+				bsig_engine.start
 
-				# enable BSig's satisfier
-				bsig_engine.enable({:mode => :satisfier})
-
-				# start web server
 				server.start
 
 			rescue Exception => e
@@ -135,59 +116,36 @@ module Sfp
 		# Stop the agent's daemon.
 		#
 		def self.stop
-			# stopping web server
-			pid = (File.exist?(PIDFile) ? File.read(PIDFile).to_i : nil)
-			if not pid.nil? and `ps h #{pid}`.strip =~ /.*sfpagent.*/
-				Process.kill('HUP', pid)
-				puts "Stopping SFP Agent with PID #{pid}"
-				File.delete(PIDFile) if File.exist?(PIDFile)
-			else
+			begin
+				pid = File.read(PIDFile).to_i
+				puts "Stopping SFP Agent with PID #{pid}..."
+				Process.kill 'HUP', pid
+
+				sleep (Sfp::BSig::SleepTime + 0.25)
+
+				# forcely kill the process if it is still running
+				system("kill -9 #{pid} 1>/dev/null 2>/dev/null")
+
+				Sfp::Agent.logger.info "SFP Agent daemon has stopped."
+				puts "SFP Agent daemon has stopped."
+			rescue
 				puts "SFP Agent is not running."
 			end
 
-			# stopping BSig engine
-			pid_bsig = (File.exist?(BSigPIDFile) ? File.read(BSigPIDFile).to_i : nil)
-			if not pid_bsig.nil? and `ps h #{pid_bsig}`.strip =~ /.*sfpagent.*/
-				Process.kill('HUP', pid_bsig)
-				puts "Stopping BSig engine with PID #{pid_bsig}"
-				File.delete(BSigPIDFile) if File.exist?(BSigPIDFile)
-				sleep (Sfp::BSig::SleepTime + 0.5)
-			else
-				puts "BSig engine is not running."
-			end
-
-			# kill the processes if they are still running
-			system("kill -9 #{pid} 1>/dev/null 2>/dev/null")
-			system("kill -9 #{pid_bsig} 1>/dev/null 2>/dev/null")
-
-			Sfp::Agent.logger.info "SFP Agent daemons have stopped."
+		ensure
+			File.delete(PIDFile) if File.exist?(PIDFile)
 		end
 
 		# Print the status of the agent.
 		#
 		def self.status
-			if not File.exist?(PIDFile)
-				puts "SFP Agent is not running."
-			else
+			begin
 				pid = File.read(PIDFile).to_i
-				if `ps hf #{pid}`.strip =~ /.*sfpagent.*/
-					puts "SFP Agent is running with PID #{pid}"
-				else
-					File.delete(PIDFile)
-					puts "SFP Agent is not running."
-				end
-			end
-
-			if not File.exist?(BSigPIDFile)
-				puts "BSig engine is not running."
-			else
-				pid = File.read(BSigPIDFile).to_i
-				if `ps hf #{pid}`.strip =~ /.*sfpagent.*/
-					puts "BSig engine is running with PID #{pid}"
-				else
-					File.delete(BSigPIDFile)
-					puts "BSig engine is not running."
-				end
+				Process.kill 0, pid
+				puts "SFP Agent is running with PID #{pid}"
+			rescue
+				puts "SFP Agent is not running."
+				File.delete(PIDFile) if File.exist?(PIDFile)
 			end
 		end
 

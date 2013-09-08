@@ -10,62 +10,48 @@ class Sfp::BSig
 	CachedDir = (Process.euid == 0 ? '/var/sfpagent' : File.expand_path('~/.sfpagent'))
 	SatisfierLockFile = "#{CachedDir}/bsig.satisfier.lock.#{Time.now.nsec}"
 
-	attr_reader :enabled, :mode
+	attr_reader :enabled, :status, :mode
 
 	def initialize(p={})
 		@lock = Mutex.new
 		@enabled = false
+		@status = :stopped
 	end
 
-	def disable
+	def stop
 		@enabled = false
 	end
 
-	def enable(p={})
+	def start
+		@enabled = true
 		@lock.synchronize {
-			return if @enabled
-			@enabled = true
+			return if @status == :running
+			@status = :running
 		}
 
-		@mode = p[:mode]
-		if p[:mode] == :main
-			enable_main_thread
-		elsif p[:mode] == :satisfier
-			enable_satisfier_thread
-		end
-	end
+		Thread.new {
+			register_satisfier_thread(:reset)
+	
+			system("rm -f #{CachedDir}/operator.*.lock")
+	
+			Sfp::Agent.logger.info "[main] BSig engine is running."
+	
+			puts "BSig Engine is running with PID #{$$}"
+			File.open(Sfp::Agent::BSigPIDFile, 'w') { |f| f.write($$.to_s) }
+	
+			self.execute_model
+	
+			File.delete(SatisfierLockFile) if File.exist?(SatisfierLockFile)
+			Sfp::Agent.logger.info "[main] BSig engine has stopped."
 
-	def enable_satisfier_thread
-		Sfp::Agent.logger.info "[#{@mode}] BSig engine is enabled."
-	end
-
-	def enable_main_thread
-		['INT', 'KILL', 'HUP'].each { |signal|
-			trap(signal) {
-				Sfp::Agent.logger.info "[#{@mode}] Shutting down BSig engine"
-				disable
-			}
+			@status = :stopped
 		}
-
-		register_satisfier_thread(:reset)
-
-		system("rm -f #{CachedDir}/operator.*.lock")
-
-		Sfp::Agent.logger.info "[#{@mode}] BSig engine is running."
-
-		puts "BSig Engine is running with PID #{$$}"
-		File.open(Sfp::Agent::BSigPIDFile, 'w') { |f| f.write($$.to_s) }
-
-		self.execute_model
-
-		File.delete(SatisfierLockFile) if File.exist?(SatisfierLockFile)
-		Sfp::Agent.logger.info "[#{@mode}] BSig engine has stopped."
 	end
 
 	def execute_model
-		Sfp::Agent.logger.info "[#{@mode}] Executing BSig model"
+		Sfp::Agent.logger.info "[main] Executing BSig model"
 
-		previous_status = nil
+		previous_exec_status = exec_status = nil
 		while @enabled
 			begin
 	
@@ -73,24 +59,24 @@ class Sfp::BSig
 	
 				bsig = Sfp::Agent.get_bsig
 				if bsig.nil?
-					status = :no_bsig
+					exec_status = :no_bsig
 					sleep SleepTime
 				else
-					status = achieve_local_goal(bsig['id'], bsig['goal'], bsig['operators'], 1)
-					if status == :failure
-						Sfp::Agent.logger.error "[#{@mode}] Executing BSig model [Failed]"
+					exec_status = achieve_local_goal(bsig['id'], bsig['goal'], bsig['operators'], 1, :main)
+					if exec_status == :failure
+						Sfp::Agent.logger.error "[main] Executing BSig model [Failed]"
 						sleep SleepTime
-					elsif status == :no_flaw
+					elsif exec_status == :no_flaw
 						sleep SleepTime
 					end
 				end
 
-				if previous_status != status
-					Sfp::Agent.logger.info "[#{@mode}] BSig engine - status: " + status.to_s
-					previous_status = status
+				if previous_exec_status != exec_status
+					Sfp::Agent.logger.info "[main] BSig engine - status: " + exec_status.to_s
+					previous_exec_status = exec_status
 				end
 			rescue Exception => e
-				Sfp::Agent.logger.error "[#{@mode}] Error on executing BSig model\n#{e}\n#{e.backtrace.join("\n")}"
+				Sfp::Agent.logger.error "[main] Error on executing BSig model\n#{e}\n#{e.backtrace.join("\n")}"
 				sleep SleepTime
 			end
 		end
@@ -106,11 +92,12 @@ class Sfp::BSig
 	end
 
 	# returns
-	# :no_flaw   : there is no goal-flaw
-	# :failure   : there is a failure on achieving the goal
-	# :ongoing   : the selected operator is being executed
-	# :repaired  : some goal-flaws have been repaired, but the goal may have other flaws
-	def achieve_local_goal(id, goal, operators, pi)
+	#   :no_flaw  => there is no goal-flaw
+	#   :failure  => there is a failure on achieving the goal
+	#   :ongoing  => the selected operator is being executed
+	#   :repaired => some goal-flaws have been repaired, but the goal may have other flaws
+	#
+	def achieve_local_goal(id, goal, operators, pi, mode)
 		operator = nil
 
 		current = get_current_state
@@ -120,21 +107,21 @@ class Sfp::BSig
 		operator = select_operator(flaws, operators, pi)
 		return :failure if operator.nil?
 
-#Sfp::Agent.logger.info "[#{@mode}] Flaws: #{JSON.generate(flaws)}"  # debugging
+#Sfp::Agent.logger.info "[#{mode}] Flaws: #{JSON.generate(flaws)}"  # debugging
 
 		return :ongoing if not lock_operator(operator)
 
-		Sfp::Agent.logger.info "[#{@mode}] Selected operator: #{operator['name']}"
+		Sfp::Agent.logger.info "[#{mode}] Selected operator: #{operator['name']}"
 
 		next_pi = operator['pi'] + 1
 		pre_local, pre_remote = split_preconditions(operator)
 
-#Sfp::Agent.logger.info "[#{@mode}] local-flaws: #{JSON.generate(pre_local)}, remote-flaws: #{JSON.generate(pre_remote)}"  # debugging
+#Sfp::Agent.logger.info "[#{mode}] local-flaws: #{JSON.generate(pre_local)}, remote-flaws: #{JSON.generate(pre_remote)}"  # debugging
 
 		status = nil
 		tries = MaxTries
 		begin
-			status = achieve_local_goal(id, pre_local, operators, next_pi)
+			status = achieve_local_goal(id, pre_local, operators, next_pi, mode)
 			if status == :no_flaw or status == :failure or not @enabled
 				break
 			elsif status == :ongoing
@@ -147,8 +134,8 @@ class Sfp::BSig
 		end until tries <= 0
 
 		if status != :no_flaw or
-			not achieve_remote_goal(id, pre_remote, next_pi) or
-			not invoke(operator)
+			not achieve_remote_goal(id, pre_remote, next_pi, mode) or
+			not invoke(operator, mode)
 
 			unlock_operator(operator) if not operator.nil?
 			return :failure
@@ -158,13 +145,13 @@ class Sfp::BSig
 		:repaired
 	end
 
-	def achieve_remote_goal(id, goal, pi)
+	def achieve_remote_goal(id, goal, pi, mode)
 		if goal.length > 0
 			agents = Sfp::Agent.get_agents
 			split_goal_by_agent(goal).each do |agent_name,agent_goal|
 				return false if not agents.has_key?(agent_name) or agents[agent_name]['sfpAddress'].to_s == ''
 
-				return false if not send_goal_to_agent(agents[agent_name], id, agent_goal, pi, agent_name)
+				return false if not send_goal_to_agent(agents[agent_name], id, agent_goal, pi, agent_name, mode)
 			end
 		end
 		true
@@ -182,7 +169,7 @@ class Sfp::BSig
 		status = nil
 		tries = MaxTries
 		begin
-			status = achieve_local_goal(bsig['id'], goal, bsig['operators'], pi)
+			status = achieve_local_goal(bsig['id'], goal, bsig['operators'], pi, :satisfier)
 			if status == :no_flaw or status == :failure or not @enabled
 				break
 			elsif status == :ongoing
@@ -251,16 +238,16 @@ class Sfp::BSig
 		agent_goal
 	end
 
-	def send_goal_to_agent(agent, id, g, pi, agent_name='')
+	def send_goal_to_agent(agent, id, g, pi, agent_name='', mode)
 		data = {'id' => id,
 		        'goal' => JSON.generate(g),
 		        'pi' => pi}
 
-		Sfp::Agent.logger.info "[#{@mode}] Request goal to: #{agent_name} [WAIT]"
+		Sfp::Agent.logger.info "[#{mode}] Request goal to: #{agent_name} [WAIT]"
 
 		code, _ = put_data(agent['sfpAddress'], agent['sfpPort'], SatisfierPath, data)
 
-		Sfp::Agent.logger.info "[#{@mode}] Request goal to: #{agent_name} - status: #{code}"
+		Sfp::Agent.logger.info "[#{mode}] Request goal to: #{agent_name} - status: #{code}"
 
 		(code == '200')
 	end
@@ -323,8 +310,8 @@ class Sfp::BSig
 		[local, remote]
 	end
 
-	def invoke(operator)
-		Sfp::Agent.logger.info "[#{@mode}] Invoking #{operator['name']}"
+	def invoke(operator, mode)
+		Sfp::Agent.logger.info "[#{mode}] Invoking #{operator['name']}"
 		Sfp::Agent.execute_action(operator)
 	end
 end
