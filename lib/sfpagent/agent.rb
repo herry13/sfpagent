@@ -40,6 +40,9 @@ module Sfp
 
 		@@runtime_lock = Mutex.new
 
+		@@agents_database = nil
+		@@agents_database_modified_time = nil
+
 		def self.logger
 			@@logger
 		end
@@ -69,7 +72,7 @@ module Sfp
 				load_modules(p)
 
 				# reload model
-				build_model({:complete => true})
+				update_model({:rebuild => true})
 
 				# create web server
 				server_type = (p[:daemon] ? WEBrick::Daemon : WEBrick::SimpleServer)
@@ -206,9 +209,8 @@ module Sfp
 						f.flush
 						f.truncate(f.pos)
 					}
-					build_model
+					update_model
 					Sfp::Agent.logger.info "Setting the model [OK]"
-				else
 				end
 				return true
 			rescue Exception => e
@@ -219,7 +221,7 @@ module Sfp
 
 		# Reload the model from cached file.
 		#
-		def self.build_model(p={})
+		def self.update_model(p={})
 			if not File.exist?(ModelFile)
 				Sfp::Agent.logger.info "There is no model in cache."
 			else
@@ -227,7 +229,7 @@ module Sfp
 					@@runtime_lock.synchronize {
 						data = File.read(ModelFile)
 						@@current_model_hash = Digest::MD5.hexdigest(data)
-						if !defined?(@@runtime) or @@runtime.nil? or p[:complete]
+						if !defined?(@@runtime) or @@runtime.nil? or p[:rebuild]
 							@@runtime = Sfp::Runtime.new(JSON[data])
 						else
 							@@runtime.set_model(JSON[data])
@@ -370,7 +372,7 @@ module Sfp
 					module_file = "#{dir}/#{name}/#{name}.rb"
 					next if not File.exist?(module_file)
 					begin
-						load module_file #require module_file
+						load module_file # use 'load' than 'require'
 						Sfp::Agent.logger.info "Loading module #{dir}/#{name} [OK]"
 						counter += 1
 						@@modules << name
@@ -465,7 +467,7 @@ module Sfp
 			load_modules(@@config)
 			
 			# rebuild the model
-			build_model({:complete => true})
+			update_model({:rebuild => true})
 
 			Sfp::Agent.logger.info "Installing module #{name} [OK]"
 
@@ -500,12 +502,10 @@ module Sfp
 			true
 		end
 
-		@@agents_data = nil
-		@@agents_data_modified_time = nil
 		def self.get_agents
 			return {} if not File.exist?(AgentsDataFile)
-			return @@agents_data if File.mtime(AgentsDataFile) == @@agents_data_modified_time
-			@@agents_data = JSON[File.read(AgentsDataFile)]
+			return @@agents_database if File.mtime(AgentsDataFile) == @@agents_database_modified_time
+			@@agents_database = JSON[File.read(AgentsDataFile)]
 		end
 
 		# A class that handles HTTP request.
