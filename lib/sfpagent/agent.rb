@@ -397,8 +397,16 @@ module Sfp
 			result
 		end
 
-		def self.install_module(name, data)
-			return false if @@config[:modules_dir].to_s == ''
+		def self.install_modules(modules)
+			modules.each { |name,data| return false if not install_module(name, data, false) }
+
+			load_modules(@@config)
+
+			true
+		end
+
+		def self.install_module(name, data, reload=true)
+			return false if @@config[:modules_dir].to_s == '' or data.nil?
 
 			if !File.directory? @@config[:modules_dir]
 				File.delete @@config[:modules_dir] if File.exist? @@config[:modules_dir]
@@ -422,11 +430,9 @@ module Sfp
 				end
 				system("cd #{module_dir}; rm data.tgz")
 			}
-			load_modules(@@config)
-			
-			# rebuild the model
-			update_model({:rebuild => true})
 
+			load_modules(@@config) if reload
+			
 			Sfp::Agent.logger.info "Installing module #{name} [OK]"
 
 			true
@@ -441,22 +447,40 @@ module Sfp
 			end
 		end
 
-		def self.set_agents(agents)
-			File.open(AgentsDataFile, 'w', 0600) do |f|
-				raise Exception, "Invalid agents list." if not agents.is_a?(Hash)
-				buffer = {}
-				agents.each { |name,data|
-					raise Exception, "Invalid agents list." if not data.is_a?(Hash) or
-						not data.has_key?('sfpAddress') or data['sfpAddress'].to_s.strip == '' or
-						not data.has_key?('sfpPort')
-					buffer[name] = {}
-					buffer[name]['sfpAddress'] = data['sfpAddress'].to_s
-					buffer[name]['sfpPort'] = data['sfpPort'].to_s.strip.to_i
-					buffer[name]['sfpPort'] = DefaultPort if buffer[name]['sfpPort'] == 0
+		def self.set_agents(new_data)
+			new_data.each { |name,agent|
+				return false if not agent['sfpAddress'].is_a?(String) or agent['sfpAddress'].strip == '' or
+					agent['sfpPort'].to_i <= 0
+			}
+
+			updated = false
+			File.open(AgentsDataFile, File::RDWR|File::CREAT, 0644) { |f|
+				f.flock(File::LOCK_EX)
+				old_data = f.read
+				old_data = (old_data == '' ? {} : JSON[old_data])
+				
+				if new_data.hash != old_data.hash
+					f.rewind
+					f.write(JSON.generate(new_data))
+					f.flush
+					f.truncate(f.pos)
+					updated = true
+				end
+			}
+
+			if updated # broadcast to other agents
+				http_data = {'agents' => JSON.generate(new_data)}
+
+				new_data.each { |name,agent|
+					begin
+						code, _ = NetHelper.put_data(agent['sfpAddress'], agent['sfpPort'], '/agents', http_data, 5, 20)
+						raise Exception if code != '200'
+					rescue Exception => e
+						Sfp::Agent.logger.warn "Push agents list to #{agent['sfpAddress']}:#{agent['sfpPort']} [Failed]"
+					end
 				}
-				f.write(JSON.generate(buffer))
-				f.flush
 			end
+
 			true
 		end
 
@@ -580,10 +604,13 @@ module Sfp
 						status, content_type, body = self.manage_modules({:name => path[9, path.length-9],
 						                                                  :query => request.query})
 
+					elsif path == '/modules' and request.query.length > 0
+						status, content_type, body = self.manage_modules({:query => request.query})
+
 					elsif path == '/agents' and request.query.has_key?('agents')
 						status, content_type, body = self.manage_agents({:query => request.query})
 
-					elsif path == '/bsig' and request.query.has_keY?('bsig')
+					elsif path == '/bsig' and request.query.has_key?('bsig')
 						status, content_type, body = self.set_bsig({:query => request.query})
 
 					elsif path == '/bsig/satisfier'
@@ -597,6 +624,15 @@ module Sfp
 				response.body = body
 			end
 
+			# Handle HTTP Put request
+			#
+			# uri:
+			#	/model          => delete existing model
+			#	/modules        => delete a module with name specified in parameter "module", or
+			#	                   delete all modules if parameter "module" is not provided
+			#	/agents         => delete agents database
+			#  /bsig           => delete existing BSig model
+			#
 			def do_DELETE(request, response)
 				status = 400
 				content_type = body = ''
@@ -639,17 +675,27 @@ module Sfp
 			end
 
 			def manage_modules(p={})
+				success = false
 				if p[:delete]
-					return [200, '', ''] if Sfp::Agent.uninstall_all_modules
-				else
-					p[:name], _ = p[:name].split('/', 2)
-					if p[:query] and p[:query].has_key?('module')
-						return [200, '', ''] if Sfp::Agent.install_module(p[:name], p[:query]['module'])
+					success = Sfp::Agent.uninstall_all_modules
+				elsif p[:name]
+					name, _ = p[:name].split('/', 2)
+					if p[:query]
+						success = Sfp::Agent.install_module(name, p[:query]['module'])
 					else
-						return [200, '', ''] if Sfp::Agent.uninstall_module(p[:name])
+						success = Sfp::Agent.uninstall_module(name)
 					end
+				elsif p[:query].length > 0
+					success = Sfp::Agent.install_modules(p[:query])
 				end
-				[500, '', '']
+
+				if success
+					# rebuild the model
+					Sfp::Agent.update_model({:rebuild => true})
+					[200, '', '']
+				else
+					[500, '', '']
+				end
 			end
 
 			def get_schemata(p={})
