@@ -486,8 +486,8 @@ module Sfp
 			#
 			def do_GET(request, response)
 				status = 400
-				content_type, body = ''
-				if not trusted(request.peeraddr[2])
+				content_type = body = ''
+				if not trusted(request)
 					status = 403
 				else
 					path = (request.path[-1,1] == '/' ? request.path.chop : request.path)
@@ -540,7 +540,7 @@ module Sfp
 			def do_POST(request, response)
 				status = 400
 				content_type, body = ''
-				if not self.trusted(request.peeraddr[2])
+				if not self.trusted(request)
 					status = 403
 				else
 					path = (request.path[-1,1] == '/' ? ryyequest.path.chop : request.path)
@@ -567,26 +567,23 @@ module Sfp
 			#                     a satisfier thread to try to achieve it
 			def do_PUT(request, response)
 				status = 400
-				content_type, body = ''
-				if not self.trusted(request.peeraddr[2])
+				content_type = body = ''
+				if not self.trusted(request)
 					status = 403
 				else
 					path = (request.path[-1,1] == '/' ? ryyequest.path.chop : request.path)
 
-					if path == '/model'
+					if path == '/model' and request.query.has_key?('model')
 						status, content_type, body = self.set_model({:query => request.query})
 
-					elsif path =~ /\/modules\/.+/
+					elsif path =~ /\/modules\/.+/ and request.query.length > 0
 						status, content_type, body = self.manage_modules({:name => path[9, path.length-9],
 						                                                  :query => request.query})
 
-					elsif path == '/modules'
-						status, content_type, body = self.manage_modules({:delete => true})
-
-					elsif path == '/agents'
+					elsif path == '/agents' and request.query.has_key?('agents')
 						status, content_type, body = self.manage_agents({:query => request.query})
 
-					elsif path == '/bsig'
+					elsif path == '/bsig' and request.query.has_keY?('bsig')
 						status, content_type, body = self.set_bsig({:query => request.query})
 
 					elsif path == '/bsig/satisfier'
@@ -600,9 +597,37 @@ module Sfp
 				response.body = body
 			end
 
+			def do_DELETE(request, response)
+				status = 400
+				content_type = body = ''
+				if not self.trusted(request)
+					status = 403
+				else
+					path = (request.path[-1,1] == '/' ? ryyequest.path.chop : request.path)
+
+					if path == '/modules'
+						status, content_type, body = self.manage_modules({:delete => true})
+
+					elsif path =~ /\/modules\/.+/
+						status, content_type, body = self.manage_modules({:name => path[9, path.length-9]})
+
+					elsif path == '/model'
+						status, content_type, body = self.set_model
+
+					elsif path == '/agents'
+						status, content_type, body = self.manage_agents
+
+					elsif path == '/bsig'
+						status, content_type, body = self.set_bsig
+
+					end
+
+				end
+			end
+
 			def manage_agents(p={})
 				begin
-					if p[:query].has_key?('agents')
+					if p[:query] and p[:query].has_key?('agents')
 						return [200, '', ''] if Sfp::Agent.set_agents(JSON[p[:query]['agents']])
 					else
 						return [200, '', ''] if Sfp::Agent.set_agents({})
@@ -618,7 +643,7 @@ module Sfp
 					return [200, '', ''] if Sfp::Agent.uninstall_all_modules
 				else
 					p[:name], _ = p[:name].split('/', 2)
-					if p[:query].has_key?('module')
+					if p[:query] and p[:query].has_key?('module')
 						return [200, '', ''] if Sfp::Agent.install_module(p[:name], p[:query]['module'])
 					else
 						return [200, '', ''] if Sfp::Agent.uninstall_module(p[:name])
@@ -680,7 +705,7 @@ module Sfp
 			end
 
 			def execute(p={})
-				return [400, '', ''] if not p[:query].has_key?('action')
+				return [400, '', ''] if not (p[:query] and p[:query].has_key?('action'))
 				begin
 					return [200, '', ''] if Sfp::Agent.execute_action(JSON[p[:query]['action']])
 				rescue
@@ -733,7 +758,7 @@ module Sfp
 				[500, '', '']
 			end
 
-			def trusted(address)
+			def trusted(request)
 				true
 			end
 
