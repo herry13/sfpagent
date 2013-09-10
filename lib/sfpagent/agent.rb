@@ -13,19 +13,21 @@ module Sfp
 	module Agent
 		NetHelper = Object.new.extend(Nuri::Net::Helper)
 
-		CachedDir = (Process.euid == 0 ? '/var/sfpagent' : File.expand_path('~/.sfpagent'))
-		Dir.mkdir(CachedDir, 0700) if not File.exist?(CachedDir)
+		CacheDir = (Process.euid == 0 ? '/var/sfpagent' : File.expand_path('~/.sfpagent'))
+		Dir.mkdir(CacheDir, 0700) if not File.exist?(CacheDir)
 
 		DefaultPort = 1314
 
-		PIDFile = "#{CachedDir}/sfpagent.pid"
-		LogFile = "#{CachedDir}/sfpagent.log"
-		ModelFile = "#{CachedDir}/sfpagent.model"
-		AgentsDataFile = "#{CachedDir}/sfpagent.agents"
+		PIDFile = "#{CacheDir}/sfpagent.pid"
+		LogFile = "#{CacheDir}/sfpagent.log"
+		ModelFile = "#{CacheDir}/sfpagent.model"
+		AgentsDataFile = "#{CacheDir}/sfpagent.agents"
 
-		BSigFile = "#{CachedDir}/bsig.model"
-		BSigPIDFile = "#{CachedDir}/bsig.pid"
-		BSigThreadsLockFile = "#{CachedDir}/bsig.threads.lock.#{Time.now.nsec}"
+		CacheModelFile = "#{CacheDir}/cache.model"
+
+		BSigFile = "#{CacheDir}/bsig.model"
+		BSigPIDFile = "#{CacheDir}/bsig.pid"
+		BSigThreadsLockFile = "#{CacheDir}/bsig.threads.lock.#{Time.now.nsec}"
 
 		@@logger = WEBrick::Log.new(LogFile, WEBrick::BasicLog::INFO ||
 		                                     WEBrick::BasicLog::ERROR ||
@@ -64,7 +66,7 @@ module Sfp
 
 			begin
 				# check modules directory, and create it if it's not exist
-				p[:modules_dir] = File.expand_path(p[:modules_dir].to_s.strip != '' ? p[:modules_dir].to_s : "#{CachedDir}/modules")
+				p[:modules_dir] = File.expand_path(p[:modules_dir].to_s.strip != '' ? p[:modules_dir].to_s : "#{CacheDir}/modules")
 				Dir.mkdir(p[:modules_dir], 0700) if not File.exist?(p[:modules_dir])
 				@@config = p
 
@@ -97,6 +99,10 @@ module Sfp
 					trap(signal) {
 						Sfp::Agent.logger.info "Shutting down web server and BSig engine..."
 						bsig_engine.stop
+						loop do
+							break if bsig_engine.status == :stopped
+							sleep 1
+						end
 						server.shutdown
 					}
 				}
@@ -121,13 +127,15 @@ module Sfp
 				puts "Stopping SFP Agent with PID #{pid}..."
 				Process.kill 'HUP', pid
 
-				sleep (Sfp::BSig::SleepTime + 0.25)
-
-				# forcely kill the process if it is still running
-				system("kill -9 #{pid} 1>/dev/null 2>/dev/null")
-
-				Sfp::Agent.logger.info "SFP Agent daemon has stopped."
-				puts "SFP Agent daemon has stopped."
+				begin
+					sleep (Sfp::BSig::SleepTime + 0.25)
+					Process.kill 0, pid
+					Sfp::Agent.logger.info "SFP Agent daemon is still running."
+					puts "SFP Agent daemon is still running."
+				rescue
+					Sfp::Agent.logger.info "SFP Agent daemon has stopped."
+					puts "SFP Agent daemon has stopped."
+				end
 			rescue
 				puts "SFP Agent is not running."
 			end
@@ -147,6 +155,39 @@ module Sfp
 				puts "SFP Agent is not running."
 				File.delete(PIDFile) if File.exist?(PIDFile)
 			end
+		end
+
+		def self.get_cache_model(p={})
+			model = JSON[File.read(CacheModelFile)]
+			(model.has_key?(p[:name]) ? model[p[:name]] : nil)
+		end
+
+		def self.set_cache_model(p={})
+			File.open(CacheModelFile, File::RDWR|File::CREAT, 0600) do |f|
+				f.flock(File::LOCK_EX)
+				json = f.read
+				model = (json.length >= 2 ? JSON[json] : {})
+
+				if p[:name]
+					if p[:model]
+						model[p[:name]] = p[:model]
+						Sfp::Agent.logger.info "Setting cache model for #{p[:name]}..."
+					else
+						model.delete(p[:name]) if model.has_key?(p[:name])
+						Sfp::Agent.logger.info "Deleting cache model for #{p[:name]}..."
+					end
+				else
+					model = {}
+					Sfp::Agent.logger.info "Deleting all cache model..."
+				end
+
+				f.rewind
+				f.write(JSON.generate(model))
+				f.flush
+				f.truncate(f.pos)
+			end
+
+			true
 		end
 
 		# Save given model to cached file, and then reload the model.
@@ -342,7 +383,7 @@ module Sfp
 			Sfp::Agent.logger.info "Successfully loading #{counter} modules."
 		end
 
-		def self.get_schemata(module_name)
+		def self.get_sfp(module_name)
 			dir = @@config[:modules_dir]
 
 			filepath = "#{dir}/#{module_name}/#{module_name}.sfp"
@@ -370,6 +411,23 @@ module Sfp
 			data = {}
 			@@modules.each { |m| data[m] = get_module_hash(m) }
 			data
+		end
+
+		# Push a list of modules to an agent using a script in $SFPAGENT_HOME/bin/install_module.
+		#
+		# parameters:
+		#   :address => address of target agent
+		#   :port    => port of target agent
+		#   :modules => an array of modules' name that will be pushed
+		#
+		def self.push_modules(p={})
+			fail "Incomplete parameters." if !p[:modules] or !p[:address] or !p[:port]
+
+			install_module = File.expand_path('../../../bin/install_module', __FILE__)
+			modules = p[:modules].join(' ')
+			cmd = "cd #{@@config[:modules_dir]}; #{install_module} #{p[:address]} #{p[:port]} #{modules}"
+			result = `#{cmd}`
+			(result =~ /status: ok/)
 		end
 
 		def self.uninstall_all_modules(p={})
@@ -503,7 +561,7 @@ module Sfp
 			#	/pid      => save daemon's PID to a file (only requested from localhost)
 			#	/state    => return the current state
 			#	/model    => return the current model
-			#	/schemata => return the schemata of a module
+			#	/sfp      => return the SFP description of a module
 			#	/modules  => return a list of available modules
 			#  /agents   => return a list of agents database
 			#  /log      => return last 100 lines of log file
@@ -533,11 +591,14 @@ module Sfp
 					elsif path == '/model'
 						status, content_type, body = get_model
 
+					elsif path =~ /\/model\/cache\/.+/
+						status, content_type, body = self.get_cache_model({:name => path[13, path.length-13]})
+
 					elsif path == '/bsig'
 						status, content_Type, body = get_bsig
 
-					elsif path =~ /^\/schemata\/.+/
-						status, content_type, body = get_schemata({:module => path[10, path.length-10]})
+					elsif path =~ /^\/sfp\/.+/
+						status, content_type, body = get_sfp({:module => path[10, path.length-10]})
 
 					elsif path == '/modules'
 						status, content_type, body = [200, 'application/json', JSON.generate(Sfp::Agent.get_modules)]
@@ -600,6 +661,10 @@ module Sfp
 					if path == '/model' and request.query.has_key?('model')
 						status, content_type, body = self.set_model({:query => request.query})
 
+					elsif path =~ /\/model\/cache\/.+/ and request.query.length > 0
+						status, content_type, body = self.set_cache_model({:name => path[13, path.length-13],
+						                                                   :query => request.query})
+
 					elsif path =~ /\/modules\/.+/ and request.query.length > 0
 						status, content_type, body = self.manage_modules({:name => path[9, path.length-9],
 						                                                  :query => request.query})
@@ -608,7 +673,7 @@ module Sfp
 						status, content_type, body = self.manage_modules({:query => request.query})
 
 					elsif path == '/agents' and request.query.has_key?('agents')
-						status, content_type, body = self.manage_agents({:query => request.query})
+						status, content_type, body = self.set_agents({:query => request.query})
 
 					elsif path == '/bsig' and request.query.has_key?('bsig')
 						status, content_type, body = self.set_bsig({:query => request.query})
@@ -641,17 +706,23 @@ module Sfp
 				else
 					path = (request.path[-1,1] == '/' ? ryyequest.path.chop : request.path)
 
-					if path == '/modules'
-						status, content_type, body = self.manage_modules({:delete => true})
+					if path == '/model'
+						status, content_type, body = self.set_model
+
+					elsif path == '/model/cache'
+						status, content_type, body = self.set_cache_model
+
+					elsif path =~ /\/model\/cache\/.+/
+						status, content_type, body = self.set_cache_model({:name => path[13, path.length-13]})
+
+					elsif path == '/modules'
+						status, content_type, body = self.manage_modules({:deleteall => true})
 
 					elsif path =~ /\/modules\/.+/
 						status, content_type, body = self.manage_modules({:name => path[9, path.length-9]})
 
-					elsif path == '/model'
-						status, content_type, body = self.set_model
-
 					elsif path == '/agents'
-						status, content_type, body = self.manage_agents
+						status, content_type, body = self.set_agents
 
 					elsif path == '/bsig'
 						status, content_type, body = self.set_bsig
@@ -661,7 +732,7 @@ module Sfp
 				end
 			end
 
-			def manage_agents(p={})
+			def set_agents(p={})
 				begin
 					if p[:query] and p[:query].has_key?('agents')
 						return [200, '', ''] if Sfp::Agent.set_agents(JSON[p[:query]['agents']])
@@ -675,33 +746,47 @@ module Sfp
 			end
 
 			def manage_modules(p={})
-				success = false
-				if p[:delete]
-					success = Sfp::Agent.uninstall_all_modules
-				elsif p[:name]
-					name, _ = p[:name].split('/', 2)
+				if p[:name]
 					if p[:query]
-						success = Sfp::Agent.install_module(name, p[:query]['module'])
+						return [200, '', ''] if Sfp::Agent.install_module(p[:name], p[:query]['module'])
 					else
-						success = Sfp::Agent.uninstall_module(name)
+						return [200, '', ''] if Sfp::Agent.uninstall_module(p[:name])
 					end
 				elsif p[:query].length > 0
-					success = Sfp::Agent.install_modules(p[:query])
+					return [200, '', ''] if Sfp::Agent.install_modules(p[:query])
+				else
+					return [200, '', ''] if Sfp::Agent.uninstall_all_modules
 				end
 
-				if success
-					# rebuild the model
-					Sfp::Agent.update_model({:rebuild => true})
-					[200, '', '']
+				[500, '', '']
+			end
+
+			def get_cache_model(p={})
+				model = Sfp::Agent.get_cache_model({:name => p[:name]})
+				if model
+					[200, 'application/json', JSON.generate(model)]
 				else
-					[500, '', '']
+					[404, '', '']
 				end
 			end
 
-			def get_schemata(p={})
+			def set_cache_model(p={})
+				p[:model] = JSON[p[:query]['model']] if p[:query].is_a?(Hash) and p[:query]['model']
+
+				if p[:name]
+					return [200, '', ''] if Sfp::Agent.set_cache_model(p)
+				else
+					return [200, '', ''] if Sfp::Agent.set_cache_model
+				end
+
+				[500, '', '']
+			end
+
+
+			def get_sfp(p={})
 				begin
 					module_name, _ = p[:module].split('/', 2)
-					return [200, 'application/json', Sfp::Agent.get_schemata(module_name)]
+					return [200, 'application/json', Sfp::Agent.get_sfp(module_name)]
 				rescue Exception => e
 					@logger.error "Sending schemata [Failed]\n#{e}"
 				end
