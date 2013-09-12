@@ -1,10 +1,10 @@
 require 'uri'
 require 'net/http'
 
-module Nuri::Net
+module Sfp::Net
 end
 
-module Nuri::Net::Helper
+module Sfp::Net::Helper
 	def http_request(uri, request, open_timeout=5, read_timeout=1800)
 		http = Net::HTTP.new(uri.host, uri.port)
 		http.open_timeout = open_timeout
