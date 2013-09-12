@@ -49,6 +49,10 @@ module Sfp
 			@@logger
 		end
 
+		def self.config
+			@@config
+		end
+
 		# Start the agent.
 		#
 		# options:
@@ -157,9 +161,9 @@ module Sfp
 			end
 		end
 
-		def self.get_cache_model(p={})
+		def self.get_cache_model(name)
 			model = JSON[File.read(CacheModelFile)]
-			(model.has_key?(p[:name]) ? model[p[:name]] : nil)
+			(model.has_key?(name) ? model[name] : nil)
 		end
 
 		def self.set_cache_model(p={})
@@ -505,31 +509,41 @@ module Sfp
 			end
 		end
 
-		def self.set_agents(new_data)
-			new_data.each { |name,agent|
+		# To delete an agent: { "agent_name" => nil }
+		# To add an agent: { "agent_name" => { "sfpAddress" => "10.0.0.1", "sfpPort" => 1314 } }
+		#
+		def self.set_agents(data)
+			data.each { |name,agent|
 				return false if not agent['sfpAddress'].is_a?(String) or agent['sfpAddress'].strip == '' or
 					agent['sfpPort'].to_i <= 0
 			}
 
 			updated = false
+			agents = nil
 			File.open(AgentsDataFile, File::RDWR|File::CREAT, 0644) { |f|
 				f.flock(File::LOCK_EX)
-				old_data = f.read
-				old_data = (old_data == '' ? {} : JSON[old_data])
-				
-				if new_data.hash != old_data.hash
+				json = f.read
+				agents = (json == '' ? {} : JSON[json])
+				data.each { |k,v|
+					if !agents.has_key?(k) or v.nil? or agents[k].hash != v.hash
+						agents[k] = v
+						updated = true
+					end
+				}
+				agents.keys.each { |k| agents.delete(k) if agents[k].nil? }
+
+				if updated
 					f.rewind
-					f.write(JSON.generate(new_data))
+					f.write(JSON.generate(agents))
 					f.flush
 					f.truncate(f.pos)
-					updated = true
 				end
 			}
 
 			if updated # broadcast to other agents
-				http_data = {'agents' => JSON.generate(new_data)}
+				http_data = {'agents' => JSON.generate(data)}
 
-				new_data.each { |name,agent|
+				agents.each { |name,agent|
 					begin
 						code, _ = NetHelper.put_data(agent['sfpAddress'], agent['sfpPort'], '/agents', http_data, 5, 20)
 						raise Exception if code != '200'
@@ -762,7 +776,7 @@ module Sfp
 			end
 
 			def get_cache_model(p={})
-				model = Sfp::Agent.get_cache_model({:name => p[:name]})
+				model = Sfp::Agent.get_cache_model(p[:name])
 				if model
 					[200, 'application/json', JSON.generate(model)]
 				else

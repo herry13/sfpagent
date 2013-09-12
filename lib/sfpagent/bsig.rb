@@ -16,6 +16,7 @@ class Sfp::BSig
 		@lock = Mutex.new
 		@enabled = false
 		@status = :stopped
+		@lock_postprocess = Mutex.new
 	end
 
 	def stop
@@ -107,7 +108,8 @@ class Sfp::BSig
 		operator = select_operator(flaws, operators, pi)
 		return :failure if operator.nil?
 
-#Sfp::Agent.logger.info "[#{mode}] Flaws: #{JSON.generate(flaws)}"  # debugging
+# debugging
+#Sfp::Agent.logger.info "[#{mode}] Flaws: #{JSON.generate(flaws)}"
 
 		return :ongoing if not lock_operator(operator)
 
@@ -116,7 +118,8 @@ class Sfp::BSig
 		next_pi = operator['pi'] + 1
 		pre_local, pre_remote = split_preconditions(operator)
 
-#Sfp::Agent.logger.info "[#{mode}] local-flaws: #{JSON.generate(pre_local)}, remote-flaws: #{JSON.generate(pre_remote)}"  # debugging
+# debugging
+#Sfp::Agent.logger.info "[#{mode}] local-flaws: #{JSON.generate(pre_local)}, remote-flaws: #{JSON.generate(pre_remote)}"
 
 		status = nil
 		tries = MaxTries
@@ -312,6 +315,117 @@ class Sfp::BSig
 
 	def invoke(operator, mode)
 		Sfp::Agent.logger.info "[#{mode}] Invoking #{operator['name']}"
-		Sfp::Agent.execute_action(operator)
+		status = Sfp::Agent.execute_action(operator)
+		if status
+			if operator['name'] =~ /^\$(\.[a-zA-Z0-9_]+)*\.(create_vm)/
+				postprocess_create_vm(operator)
+			elsif operator['name'] =~ /^\$(\.[a-zA-Z0-9_]+)*\.(delete_vm)/
+				postprocess_delete_vm(operator)
+			end
+		end
+		status
+	end
+
+	def postprocess_delete_vm(operator)
+		@lock_postprocess.synchronize {
+			_, agent_name, _ = operator['name'].split('.', 3)
+
+			# update agents database (automatically broadcast to other agents)
+			Sfp::Agent.set_agents({agent_name => nil})
+		}
+	end
+
+	def postprocess_create_vm(operator)
+		@lock_postprocess.synchronize {
+			refs = operator['name'].split('.')
+			agent_name = refs[1]
+			vms_ref = refs[0..-2].join('.') + '.vms'
+
+			# update proxy component's state
+			state = Sfp::Agent.get_state
+
+			# get VM's address
+			vms = state.at?(vms_ref)
+			return false if !vms.is_a?(Hash) or !vms[agent_name].is_a?(Hash) or vms[agent_name]['ip'].to_s.strip == ''
+			data = {agent_name => {'sfpAddress' => vms[agent_name]['ip'], 'sfpPort' => Sfp::Agent::DefaultPort}}
+
+			# update agents database
+			Sfp::Agent.set_agents(data)
+
+			# get new agent's model from cache database
+			model = Sfp::Agent.get_cache_model(agent_name)
+			
+			if not model.nil?
+				# push required modules
+				push_modules(model)
+
+				# push new agent's model
+				code, _ = put_data(address, port, '/model', {'model' => JSON.generate(model)})
+				return (code == '200')
+			end
+		}
+		false
+	end
+
+	def push_modules(agent_model)
+		return false if !agent_model.is_a?(Hash) or !agent_model['sfpAddress'].is_a?(String)
+		address = agent_model['sfpAddress'].to_s.strip
+		port = agent_model['sfpPort'].to_s.strip
+		return false if address == '' or port == ''
+
+		name = agent_model['_self']
+		finder = Sfp::Helper::SchemaCollector.new
+		{:agent => agent_model}.accept(finder)
+		schemata = finder.schemata.uniq.map { |x| x.sub(/^\$\./, '').downcase }
+
+		modules_dir = Sfp::Agent.config[:modules_dir]
+		install_module = File.expand_path('../../../bin/install_module', __FILE__)
+
+		begin
+			# get modules list
+			code, body = get_data(address, port, '/modules')
+			raise Exception, "Unable to get modules list from #{name}" if code.to_i != 200
+
+			modules = JSON[body]
+			list = ''
+			schemata.each { |m|
+				list += "#{m} " if m != 'object' and File.exist?("#{modules_dir}/#{m}") and
+				                   (not modules.has_key?(m) or modules[m] != get_local_module_hash(m).to_s)
+			}
+
+			return true if list == ''
+
+			if system("cd #{modules_dir}; ./install_module #{address} #{port} #{list} 1>/dev/null 2>/tmp/install_module.error")
+				puts "Push modules #{list}to #{name} [OK]".green
+			else
+				puts "Push modules #{list}to #{name} [Failed]".red
+			end
+
+			return true
+
+		rescue Exception => e
+			puts "[WARN] Cannot push module to #{name} - #{e}".red
+		end
+
+		false
+	end
+
+end
+
+module Sfp::Helper
+end
+
+class Sfp::Helper::SchemaCollector
+	attr_reader :schemata
+	def initialize
+		@schemata = []
+	end
+		
+	def visit(name, value, parent)
+		if value.is_a?(Hash) and value.has_key?('_classes')
+			value['_classes'].each { |s| @schemata << s }
+		end
+		true
 	end
 end
+
