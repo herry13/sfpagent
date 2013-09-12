@@ -13,19 +13,21 @@ module Sfp
 	module Agent
 		NetHelper = Object.new.extend(Nuri::Net::Helper)
 
-		CachedDir = (Process.euid == 0 ? '/var/sfpagent' : File.expand_path('~/.sfpagent'))
-		Dir.mkdir(CachedDir, 0700) if not File.exist?(CachedDir)
+		CacheDir = (Process.euid == 0 ? '/var/sfpagent' : File.expand_path('~/.sfpagent'))
+		Dir.mkdir(CacheDir, 0700) if not File.exist?(CacheDir)
 
 		DefaultPort = 1314
 
-		PIDFile = "#{CachedDir}/sfpagent.pid"
-		LogFile = "#{CachedDir}/sfpagent.log"
-		ModelFile = "#{CachedDir}/sfpagent.model"
-		AgentsDataFile = "#{CachedDir}/sfpagent.agents"
+		PIDFile = "#{CacheDir}/sfpagent.pid"
+		LogFile = "#{CacheDir}/sfpagent.log"
+		ModelFile = "#{CacheDir}/sfpagent.model"
+		AgentsDataFile = "#{CacheDir}/sfpagent.agents"
 
-		BSigFile = "#{CachedDir}/bsig.model"
-		BSigPIDFile = "#{CachedDir}/bsig.pid"
-		BSigThreadsLockFile = "#{CachedDir}/bsig.threads.lock.#{Time.now.nsec}"
+		CacheModelFile = "#{CacheDir}/cache.model"
+
+		BSigFile = "#{CacheDir}/bsig.model"
+		BSigPIDFile = "#{CacheDir}/bsig.pid"
+		BSigThreadsLockFile = "#{CacheDir}/bsig.threads.lock.#{Time.now.nsec}"
 
 		@@logger = WEBrick::Log.new(LogFile, WEBrick::BasicLog::INFO ||
 		                                     WEBrick::BasicLog::ERROR ||
@@ -40,6 +42,9 @@ module Sfp
 
 		@@runtime_lock = Mutex.new
 
+		@@agents_database = nil
+		@@agents_database_modified_time = nil
+
 		def self.logger
 			@@logger
 		end
@@ -47,18 +52,21 @@ module Sfp
 		# Start the agent.
 		#
 		# options:
-		#	:daemon => true if running as a daemon, false if as a normal application
-		#	:port
-		#	:ssl
-		#	:certfile
-		#	:keyfile
+		#	:daemon   => true if running as a daemon, false if as a console application
+		#	:port     => port of web server will listen to
+		#	:ssl      => set true to enable HTTPS
+		#	:certfile => certificate file path for HTTPS
+		#	:keyfile  => key file path for HTTPS
 		#
 		def self.start(p={})
+			Sfp::Agent.logger.info "Starting SFP Agent daemons..."
+			puts "Starting SFP Agent daemons..."
+
 			Process.daemon
 
 			begin
 				# check modules directory, and create it if it's not exist
-				p[:modules_dir] = File.expand_path(p[:modules_dir].to_s.strip != '' ? p[:modules_dir].to_s : "#{CachedDir}/modules")
+				p[:modules_dir] = File.expand_path(p[:modules_dir].to_s.strip != '' ? p[:modules_dir].to_s : "#{CacheDir}/modules")
 				Dir.mkdir(p[:modules_dir], 0700) if not File.exist?(p[:modules_dir])
 				@@config = p
 
@@ -66,10 +74,10 @@ module Sfp
 				load_modules(p)
 
 				# reload model
-				build_model({:complete => true})
+				update_model({:rebuild => true})
 
 				# create web server
-				server_type = (p[:daemon] ? WEBrick::Daemon : WEBrick::SimpleServer)
+				server_type = WEBrick::SimpleServer
 				port = (p[:port] ? p[:port] : DefaultPort)
 				config = { :Host => '0.0.0.0',
 				           :Port => port,
@@ -89,35 +97,20 @@ module Sfp
 				# trap signal
 				['INT', 'KILL', 'HUP'].each { |signal|
 					trap(signal) {
-						Sfp::Agent.logger.info "Shutting down web server"
-						bsig_engine.disable
+						Sfp::Agent.logger.info "Shutting down web server and BSig engine..."
+						bsig_engine.stop
+						loop do
+							break if bsig_engine.status == :stopped
+							sleep 1
+						end
 						server.shutdown
 					}
 				}
 
-				# send request to local web server to save its PID
-				fork {
-					sleep 0.5
-					1.upto(5) do |i|
-						begin
-							NetHelper.get_data('127.0.0.1', config[:Port], '/pid')
-							break if File.exist?(PIDFile)
-						rescue
-							sleep (i*i)
-						end
-					end
-					puts "SFP Agent is running with PID #{File.read(PIDFile)}" if File.exist?(PIDFile)
-				}
+				File.open(PIDFile, 'w', 0644) { |f| f.write($$.to_s) }
 
-				# start BSig's main thread in a separate process
-				fork {
-					bsig_engine.enable({:mode => :main})
-				}
+				bsig_engine.start
 
-				# enable BSig's satisfier
-				bsig_engine.enable({:mode => :satisfier})
-
-				# start web server
 				server.start
 
 			rescue Exception => e
@@ -129,55 +122,72 @@ module Sfp
 		# Stop the agent's daemon.
 		#
 		def self.stop
-			# stopping web server (main thread)
-			pid = (File.exist?(PIDFile) ? File.read(PIDFile).to_i : nil)
-			if not pid.nil? and `ps h #{pid}`.strip =~ /.*sfpagent.*/
-				Process.kill('HUP', pid)
-				puts "Stopping SFP Agent with PID #{pid}"
-				File.delete(PIDFile) if File.exist?(PIDFile)
-			else
+			begin
+				pid = File.read(PIDFile).to_i
+				puts "Stopping SFP Agent with PID #{pid}..."
+				Process.kill 'HUP', pid
+
+				begin
+					sleep (Sfp::BSig::SleepTime + 0.25)
+					Process.kill 0, pid
+					Sfp::Agent.logger.info "SFP Agent daemon is still running."
+					puts "SFP Agent daemon is still running."
+				rescue
+					Sfp::Agent.logger.info "SFP Agent daemon has stopped."
+					puts "SFP Agent daemon has stopped."
+				end
+			rescue
 				puts "SFP Agent is not running."
 			end
 
-			# stopping BSig engine
-			pid_bsig = (File.exist?(BSigPIDFile) ? File.read(BSigPIDFile).to_i : nil)
-			if not pid_bsig.nil? and `ps h #{pid_bsig}`.strip =~ /.*sfpagent.*/
-				Process.kill('HUP', pid_bsig)
-				puts "Stopping BSig engine with PID #{pid_bsig}"
-				File.delete(BSigPIDFile) if File.exist?(BSigPIDFile)
-			else
-				puts "BSig engine is not running."
-			end
-
-			Sfp::Agent.logger.info "SFP Agent daemon has been stopped."
+		ensure
+			File.delete(PIDFile) if File.exist?(PIDFile)
 		end
 
 		# Print the status of the agent.
 		#
 		def self.status
-			if not File.exist?(PIDFile)
-				puts "SFP Agent is not running."
-			else
+			begin
 				pid = File.read(PIDFile).to_i
-				if `ps hf #{pid}`.strip =~ /.*sfpagent.*/
-					puts "SFP Agent is running with PID #{pid}"
+				Process.kill 0, pid
+				puts "SFP Agent is running with PID #{pid}"
+			rescue
+				puts "SFP Agent is not running."
+				File.delete(PIDFile) if File.exist?(PIDFile)
+			end
+		end
+
+		def self.get_cache_model(p={})
+			model = JSON[File.read(CacheModelFile)]
+			(model.has_key?(p[:name]) ? model[p[:name]] : nil)
+		end
+
+		def self.set_cache_model(p={})
+			File.open(CacheModelFile, File::RDWR|File::CREAT, 0600) do |f|
+				f.flock(File::LOCK_EX)
+				json = f.read
+				model = (json.length >= 2 ? JSON[json] : {})
+
+				if p[:name]
+					if p[:model]
+						model[p[:name]] = p[:model]
+						Sfp::Agent.logger.info "Setting cache model for #{p[:name]}..."
+					else
+						model.delete(p[:name]) if model.has_key?(p[:name])
+						Sfp::Agent.logger.info "Deleting cache model for #{p[:name]}..."
+					end
 				else
-					File.delete(PIDFile)
-					puts "SFP Agent is not running."
+					model = {}
+					Sfp::Agent.logger.info "Deleting all cache model..."
 				end
+
+				f.rewind
+				f.write(JSON.generate(model))
+				f.flush
+				f.truncate(f.pos)
 			end
 
-			if not File.exist?(BSigPIDFile)
-				puts "BSig engine is not running."
-			else
-				pid = File.read(BSigPIDFile).to_i
-				if `ps hf #{pid}`.strip =~ /.*sfpagent.*/
-					puts "BSig engine is running with PID #{pid}"
-				else
-					File.delete(BSigPIDFile)
-					puts "BSig engine is not running."
-				end
-			end
+			true
 		end
 
 		# Save given model to cached file, and then reload the model.
@@ -198,10 +208,8 @@ module Sfp
 						f.flush
 						f.truncate(f.pos)
 					}
-					build_model
+					update_model
 					Sfp::Agent.logger.info "Setting the model [OK]"
-				else
-					#Sfp::Agent.logger.info "The model is not changed."
 				end
 				return true
 			rescue Exception => e
@@ -212,7 +220,7 @@ module Sfp
 
 		# Reload the model from cached file.
 		#
-		def self.build_model(p={})
+		def self.update_model(p={})
 			if not File.exist?(ModelFile)
 				Sfp::Agent.logger.info "There is no model in cache."
 			else
@@ -220,7 +228,7 @@ module Sfp
 					@@runtime_lock.synchronize {
 						data = File.read(ModelFile)
 						@@current_model_hash = Digest::MD5.hexdigest(data)
-						if !defined?(@@runtime) or @@runtime.nil? or p[:complete]
+						if !defined?(@@runtime) or @@runtime.nil? or p[:rebuild]
 							@@runtime = Sfp::Runtime.new(JSON[data])
 						else
 							@@runtime.set_model(JSON[data])
@@ -363,7 +371,7 @@ module Sfp
 					module_file = "#{dir}/#{name}/#{name}.rb"
 					next if not File.exist?(module_file)
 					begin
-						load module_file #require module_file
+						load module_file # use 'load' than 'require'
 						Sfp::Agent.logger.info "Loading module #{dir}/#{name} [OK]"
 						counter += 1
 						@@modules << name
@@ -375,7 +383,7 @@ module Sfp
 			Sfp::Agent.logger.info "Successfully loading #{counter} modules."
 		end
 
-		def self.get_schemata(module_name)
+		def self.get_sfp(module_name)
 			dir = @@config[:modules_dir]
 
 			filepath = "#{dir}/#{module_name}/#{module_name}.sfp"
@@ -405,6 +413,23 @@ module Sfp
 			data
 		end
 
+		# Push a list of modules to an agent using a script in $SFPAGENT_HOME/bin/install_module.
+		#
+		# parameters:
+		#   :address => address of target agent
+		#   :port    => port of target agent
+		#   :modules => an array of modules' name that will be pushed
+		#
+		def self.push_modules(p={})
+			fail "Incomplete parameters." if !p[:modules] or !p[:address] or !p[:port]
+
+			install_module = File.expand_path('../../../bin/install_module', __FILE__)
+			modules = p[:modules].join(' ')
+			cmd = "cd #{@@config[:modules_dir]}; #{install_module} #{p[:address]} #{p[:port]} #{modules}"
+			result = `#{cmd}`
+			(result =~ /status: ok/)
+		end
+
 		def self.uninstall_all_modules(p={})
 			return true if @@config[:modules_dir] == ''
 			if system("rm -rf #{@@config[:modules_dir]}/*")
@@ -430,8 +455,16 @@ module Sfp
 			result
 		end
 
-		def self.install_module(name, data)
-			return false if @@config[:modules_dir].to_s == ''
+		def self.install_modules(modules)
+			modules.each { |name,data| return false if not install_module(name, data, false) }
+
+			load_modules(@@config)
+
+			true
+		end
+
+		def self.install_module(name, data, reload=true)
+			return false if @@config[:modules_dir].to_s == '' or data.nil?
 
 			if !File.directory? @@config[:modules_dir]
 				File.delete @@config[:modules_dir] if File.exist? @@config[:modules_dir]
@@ -455,11 +488,9 @@ module Sfp
 				end
 				system("cd #{module_dir}; rm data.tgz")
 			}
-			load_modules(@@config)
-			
-			# rebuild the model
-			build_model({:complete => true})
 
+			load_modules(@@config) if reload
+			
 			Sfp::Agent.logger.info "Installing module #{name} [OK]"
 
 			true
@@ -474,34 +505,50 @@ module Sfp
 			end
 		end
 
-		def self.set_agents(agents)
-			File.open(AgentsDataFile, 'w', 0600) do |f|
-				raise Exception, "Invalid agents list." if not agents.is_a?(Hash)
-				buffer = {}
-				agents.each { |name,data|
-					raise Exception, "Invalid agents list." if not data.is_a?(Hash) or
-						not data.has_key?('sfpAddress') or data['sfpAddress'].to_s.strip == '' or
-						not data.has_key?('sfpPort')
-					buffer[name] = {}
-					buffer[name]['sfpAddress'] = data['sfpAddress'].to_s
-					buffer[name]['sfpPort'] = data['sfpPort'].to_s.strip.to_i
-					buffer[name]['sfpPort'] = DefaultPort if buffer[name]['sfpPort'] == 0
+		def self.set_agents(new_data)
+			new_data.each { |name,agent|
+				return false if not agent['sfpAddress'].is_a?(String) or agent['sfpAddress'].strip == '' or
+					agent['sfpPort'].to_i <= 0
+			}
+
+			updated = false
+			File.open(AgentsDataFile, File::RDWR|File::CREAT, 0644) { |f|
+				f.flock(File::LOCK_EX)
+				old_data = f.read
+				old_data = (old_data == '' ? {} : JSON[old_data])
+				
+				if new_data.hash != old_data.hash
+					f.rewind
+					f.write(JSON.generate(new_data))
+					f.flush
+					f.truncate(f.pos)
+					updated = true
+				end
+			}
+
+			if updated # broadcast to other agents
+				http_data = {'agents' => JSON.generate(new_data)}
+
+				new_data.each { |name,agent|
+					begin
+						code, _ = NetHelper.put_data(agent['sfpAddress'], agent['sfpPort'], '/agents', http_data, 5, 20)
+						raise Exception if code != '200'
+					rescue Exception => e
+						Sfp::Agent.logger.warn "Push agents list to #{agent['sfpAddress']}:#{agent['sfpPort']} [Failed]"
+					end
 				}
-				f.write(JSON.generate(buffer))
-				f.flush
 			end
+
 			true
 		end
 
-		@@agents_data = nil
-		@@agents_data_modified_time = nil
 		def self.get_agents
 			return {} if not File.exist?(AgentsDataFile)
-			return @@agents_data if File.mtime(AgentsDataFile) == @@agents_data_modified_time
-			@@agents_data = JSON[File.read(AgentsDataFile)]
+			return @@agents_database if File.mtime(AgentsDataFile) == @@agents_database_modified_time
+			@@agents_database = JSON[File.read(AgentsDataFile)]
 		end
 
-		# A class that handles each request.
+		# A class that handles HTTP request.
 		#
 		class Handler < WEBrick::HTTPServlet::AbstractServlet
 			def initialize(server, logger)
@@ -511,16 +558,18 @@ module Sfp
 			# Process HTTP Get request
 			#
 			# uri:
-			#	/pid => save daemon's PID to a file
-			#	/state => return the current state
-			#	/model => return the current model
-			#	/schemata => return the schemata of a module
-			#	/modules => return a list of available modules
+			#	/pid      => save daemon's PID to a file (only requested from localhost)
+			#	/state    => return the current state
+			#	/model    => return the current model
+			#	/sfp      => return the SFP description of a module
+			#	/modules  => return a list of available modules
+			#  /agents   => return a list of agents database
+			#  /log      => return last 100 lines of log file
 			#
 			def do_GET(request, response)
 				status = 400
-				content_type, body = ''
-				if not trusted(request.peeraddr[2])
+				content_type = body = ''
+				if not trusted(request)
 					status = 403
 				else
 					path = (request.path[-1,1] == '/' ? request.path.chop : request.path)
@@ -542,11 +591,14 @@ module Sfp
 					elsif path == '/model'
 						status, content_type, body = get_model
 
+					elsif path =~ /\/model\/cache\/.+/
+						status, content_type, body = self.get_cache_model({:name => path[13, path.length-13]})
+
 					elsif path == '/bsig'
 						status, content_Type, body = get_bsig
 
-					elsif path =~ /^\/schemata\/.+/
-						status, content_type, body = get_schemata({:module => path[10, path.length-10]})
+					elsif path =~ /^\/sfp\/.+/
+						status, content_type, body = get_sfp({:module => path[10, path.length-10]})
 
 					elsif path == '/modules'
 						status, content_type, body = [200, 'application/json', JSON.generate(Sfp::Agent.get_modules)]
@@ -573,7 +625,7 @@ module Sfp
 			def do_POST(request, response)
 				status = 400
 				content_type, body = ''
-				if not self.trusted(request.peeraddr[2])
+				if not self.trusted(request)
 					status = 403
 				else
 					path = (request.path[-1,1] == '/' ? ryyequest.path.chop : request.path)
@@ -587,34 +639,43 @@ module Sfp
 				response.body = body
 			end
 
+			# Handle HTTP Put request
+			#
 			# uri:
-			#	/model => receive a new model and save to cached file
-			#	/modules => save the module if parameter "module" is provided
-			#               delete the module if parameter "module" is not provided
-			#	/agents => save the agents' list if parameter "agents" is provided
-			#	           delete all agents if parameter "agents" is not provided
+			#	/model          => receive a new model and save to cached file
+			#	/modules        => save the module if parameter "module" is provided
+			#                     delete the module if parameter "module" is not provided
+			#	/agents         => save the agents' list if parameter "agents" is provided
+			#	                   delete all agents if parameter "agents" is not provided
+			#  /bsig           => receive BSig model and receive it in cached directory
+			#  /bsig/satisfier => receive goal request from other agents and then start
+			#                     a satisfier thread to try to achieve it
 			def do_PUT(request, response)
 				status = 400
-				content_type, body = ''
-				if not self.trusted(request.peeraddr[2])
+				content_type = body = ''
+				if not self.trusted(request)
 					status = 403
 				else
 					path = (request.path[-1,1] == '/' ? ryyequest.path.chop : request.path)
 
-					if path == '/model'
+					if path == '/model' and request.query.has_key?('model')
 						status, content_type, body = self.set_model({:query => request.query})
 
-					elsif path =~ /\/modules\/.+/
+					elsif path =~ /\/model\/cache\/.+/ and request.query.length > 0
+						status, content_type, body = self.set_cache_model({:name => path[13, path.length-13],
+						                                                   :query => request.query})
+
+					elsif path =~ /\/modules\/.+/ and request.query.length > 0
 						status, content_type, body = self.manage_modules({:name => path[9, path.length-9],
 						                                                  :query => request.query})
 
-					elsif path == '/modules'
-						status, content_type, body = self.manage_modules({:delete => true})
+					elsif path == '/modules' and request.query.length > 0
+						status, content_type, body = self.manage_modules({:query => request.query})
 
-					elsif path == '/agents'
-						status, content_type, body = self.manage_agents({:query => request.query})
+					elsif path == '/agents' and request.query.has_key?('agents')
+						status, content_type, body = self.set_agents({:query => request.query})
 
-					elsif path == '/bsig'
+					elsif path == '/bsig' and request.query.has_key?('bsig')
 						status, content_type, body = self.set_bsig({:query => request.query})
 
 					elsif path == '/bsig/satisfier'
@@ -628,9 +689,52 @@ module Sfp
 				response.body = body
 			end
 
-			def manage_agents(p={})
+			# Handle HTTP Put request
+			#
+			# uri:
+			#	/model          => delete existing model
+			#	/modules        => delete a module with name specified in parameter "module", or
+			#	                   delete all modules if parameter "module" is not provided
+			#	/agents         => delete agents database
+			#  /bsig           => delete existing BSig model
+			#
+			def do_DELETE(request, response)
+				status = 400
+				content_type = body = ''
+				if not self.trusted(request)
+					status = 403
+				else
+					path = (request.path[-1,1] == '/' ? ryyequest.path.chop : request.path)
+
+					if path == '/model'
+						status, content_type, body = self.set_model
+
+					elsif path == '/model/cache'
+						status, content_type, body = self.set_cache_model
+
+					elsif path =~ /\/model\/cache\/.+/
+						status, content_type, body = self.set_cache_model({:name => path[13, path.length-13]})
+
+					elsif path == '/modules'
+						status, content_type, body = self.manage_modules({:deleteall => true})
+
+					elsif path =~ /\/modules\/.+/
+						status, content_type, body = self.manage_modules({:name => path[9, path.length-9]})
+
+					elsif path == '/agents'
+						status, content_type, body = self.set_agents
+
+					elsif path == '/bsig'
+						status, content_type, body = self.set_bsig
+
+					end
+
+				end
+			end
+
+			def set_agents(p={})
 				begin
-					if p[:query].has_key?('agents')
+					if p[:query] and p[:query].has_key?('agents')
 						return [200, '', ''] if Sfp::Agent.set_agents(JSON[p[:query]['agents']])
 					else
 						return [200, '', ''] if Sfp::Agent.set_agents({})
@@ -642,23 +746,47 @@ module Sfp
 			end
 
 			def manage_modules(p={})
-				if p[:delete]
-					return [200, '', ''] if Sfp::Agent.uninstall_all_modules
-				else
-					p[:name], _ = p[:name].split('/', 2)
-					if p[:query].has_key?('module')
+				if p[:name]
+					if p[:query]
 						return [200, '', ''] if Sfp::Agent.install_module(p[:name], p[:query]['module'])
 					else
 						return [200, '', ''] if Sfp::Agent.uninstall_module(p[:name])
 					end
+				elsif p[:query].length > 0
+					return [200, '', ''] if Sfp::Agent.install_modules(p[:query])
+				else
+					return [200, '', ''] if Sfp::Agent.uninstall_all_modules
 				end
+
 				[500, '', '']
 			end
 
-			def get_schemata(p={})
+			def get_cache_model(p={})
+				model = Sfp::Agent.get_cache_model({:name => p[:name]})
+				if model
+					[200, 'application/json', JSON.generate(model)]
+				else
+					[404, '', '']
+				end
+			end
+
+			def set_cache_model(p={})
+				p[:model] = JSON[p[:query]['model']] if p[:query].is_a?(Hash) and p[:query]['model']
+
+				if p[:name]
+					return [200, '', ''] if Sfp::Agent.set_cache_model(p)
+				else
+					return [200, '', ''] if Sfp::Agent.set_cache_model
+				end
+
+				[500, '', '']
+			end
+
+
+			def get_sfp(p={})
 				begin
 					module_name, _ = p[:module].split('/', 2)
-					return [200, 'application/json', Sfp::Agent.get_schemata(module_name)]
+					return [200, 'application/json', Sfp::Agent.get_sfp(module_name)]
 				rescue Exception => e
 					@logger.error "Sending schemata [Failed]\n#{e}"
 				end
@@ -708,7 +836,7 @@ module Sfp
 			end
 
 			def execute(p={})
-				return [400, '', ''] if not p[:query].has_key?('action')
+				return [400, '', ''] if not (p[:query] and p[:query].has_key?('action'))
 				begin
 					return [200, '', ''] if Sfp::Agent.execute_action(JSON[p[:query]['action']])
 				rescue
@@ -761,7 +889,7 @@ module Sfp
 				[500, '', '']
 			end
 
-			def trusted(address)
+			def trusted(request)
 				true
 			end
 
