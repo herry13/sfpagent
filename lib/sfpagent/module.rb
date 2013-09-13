@@ -2,6 +2,12 @@
 # predefined methods: update_state, apply, reset, resolve
 #
 module Sfp::Resource
+	@@resource = Object.new.extend(Sfp::Resource)
+
+	def self.resolve(path)
+		@@resource.resolve(path)
+	end
+
 	attr_accessor :parent, :synchronized
 	attr_reader :state, :model
 
