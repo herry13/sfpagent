@@ -57,6 +57,34 @@ class Planner
 	end
 
 	def to_image(p={})
+		def self.dot2image(dot, image_file)
+			dot_file = "/tmp/#{Time.now.getutc.to_i}.dot"
+			File.open(dot_file, 'w') { |f|
+				f.write(dot)
+				f.flush
+			}
+			!!system("dot -Tpng -o #{image_file} #{dot_file}")
+		ensure
+			File.delete(dot_file) if File.exist?(dot_file)
+		end
+
+		dot = "digraph {\n"
+		@variables.each do |sym,var|
+			name = var.name.gsub(/[\s\.\$]/, '_')
+			dot += "#{name} [label=\"#{var.name}\", shape=rect];\n"
+		end
+		@variables.each do |sym,var|
+			name = var.name.gsub(/[\s\.\$]/, '_')
+			var.dependencies.each { |sym,operators|
+				var2 = @variables[sym]
+				name2 = var2.name.gsub(/[\s\.\$]/, '_')
+				dot += "#{name} -> #{name2} ;\n"
+			}
+		end
+		dot += "}"
+puts dot
+
+		dot2image(dot, p[:file])
 	end
 
 	class Variable < Array
@@ -214,4 +242,7 @@ class Planner
 	end
 end
 
-Planner.new(:sas => File.read(ARGV[0]))
+if $0 == __FILE__ and ARGV.length > 0
+	planner = Planner.new(:sas => File.read(ARGV[0]))
+	planner.to_image(:file => 'domain.png')
+end
