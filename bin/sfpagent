@@ -48,8 +48,7 @@ elsif opts[:stop]
 
 elsif opts[:restart]
 	opts[:daemon] = true
-	Sfp::Agent.stop
-	Sfp::Agent.start(opts)
+	Sfp::Agent.start(opts) if Sfp::Agent.stop
 
 elsif opts[:status]
 	Sfp::Agent.status
