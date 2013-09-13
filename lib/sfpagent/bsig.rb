@@ -149,14 +149,26 @@ class Sfp::BSig
 	end
 
 	def achieve_remote_goal(id, goal, pi, mode)
+
 		if goal.length > 0
 			agents = Sfp::Agent.get_agents
 			split_goal_by_agent(goal).each do |agent_name,agent_goal|
-				return false if not agents.has_key?(agent_name) or agents[agent_name]['sfpAddress'].to_s == ''
-
-				return false if not send_goal_to_agent(agents[agent_name], id, agent_goal, pi, agent_name, mode)
+				if agents.has_key?(agent_name)
+					return false if agents[agent_name]['sfpAddress'].to_s == ''
+					return false if not send_goal_to_agent(agents[agent_name], id, agent_goal, pi, agent_name, mode)
+				else
+					return false if not verify_state_of_not_exist_agent(agent_name, agent_goal)
+				end
 			end
 		end
+		true
+	end
+
+	def verify_state_of_not_exist_agent(name, goal)
+		state = { name => { 'created' => false } }
+		goal.each { |var,val|
+			return false if state.at?(var) != val
+		}
 		true
 	end
 
@@ -190,7 +202,7 @@ class Sfp::BSig
 		unregister_satisfier_thread
 	end
 
-	protected
+	#protected
 	def register_satisfier_thread(mode=nil)
 		File.open(SatisfierLockFile, File::RDWR|File::CREAT, 0644) { |f|
 			f.flock(File::LOCK_EX)
@@ -230,11 +242,11 @@ class Sfp::BSig
 	end
 
 	def split_goal_by_agent(goal)
-		agents = Sfp::Agent.get_agents
+		#agents = Sfp::Agent.get_agents
 		agent_goal = {}
 		goal.each { |var,val|
 			_, agent_name, _ = var.split('.', 3)
-			fail "Agent #{agent_name} is not in database!" if not agents.has_key?(agent_name)
+			#fail "Agent #{agent_name} is not in database!" if not agents.has_key?(agent_name)
 			agent_goal[agent_name] = {} if not agent_goal.has_key?(agent_name)
 			agent_goal[agent_name][var] = val
 		}
@@ -242,17 +254,21 @@ class Sfp::BSig
 	end
 
 	def send_goal_to_agent(agent, id, g, pi, agent_name='', mode)
-		data = {'id' => id,
-		        'goal' => JSON.generate(g),
-		        'pi' => pi}
-
-		Sfp::Agent.logger.info "[#{mode}] Request goal to: #{agent_name} [WAIT]"
-
-		code, _ = put_data(agent['sfpAddress'], agent['sfpPort'], SatisfierPath, data)
-
-		Sfp::Agent.logger.info "[#{mode}] Request goal to: #{agent_name} - status: #{code}"
-
-		(code == '200')
+		begin
+			data = {'id' => id,
+			        'goal' => JSON.generate(g),
+			        'pi' => pi}
+	
+			Sfp::Agent.logger.info "[#{mode}] Request goal to: #{agent_name} [WAIT]"
+	
+			code, _ = put_data(agent['sfpAddress'], agent['sfpPort'], SatisfierPath, data)
+	
+			Sfp::Agent.logger.info "[#{mode}] Request goal to: #{agent_name} - status: #{code}"
+	
+			(code == '200')
+		rescue
+			false
+		end
 	end
 
 	def get_current_state
@@ -265,7 +281,13 @@ class Sfp::BSig
 		return goal.clone if current.nil?
 		flaws = {}
 		goal.each { |var,val|
-			current_value = current.at?(var)
+			_, agent_name, _ = var.split('.', 3)
+			if agent_name != Sfp::Agent.whoami?
+				current_value = Sfp::Resource.resolve(var)
+			else
+				current_value = current.at?(var)
+			end
+
 			if current_value.is_a?(Sfp::Undefined)
 				flaws[var] = val if not val.is_a?(Sfp::Undefined)
 			else
@@ -315,20 +337,29 @@ class Sfp::BSig
 
 	def invoke(operator, mode)
 		Sfp::Agent.logger.info "[#{mode}] Invoking #{operator['name']}"
-		status = Sfp::Agent.execute_action(operator)
-		if status
-			if operator['name'] =~ /^\$(\.[a-zA-Z0-9_]+)*\.(create_vm)/
-				postprocess_create_vm(operator)
-			elsif operator['name'] =~ /^\$(\.[a-zA-Z0-9_]+)*\.(delete_vm)/
-				postprocess_delete_vm(operator)
+
+		begin
+			status = Sfp::Agent.execute_action(operator)
+			if status
+				if operator['name'] =~ /^\$(\.[a-zA-Z0-9_]+)*\.(create_vm)/
+					postprocess_create_vm(operator)
+				elsif operator['name'] =~ /^\$(\.[a-zA-Z0-9_]+)*\.(delete_vm)/
+					postprocess_delete_vm(operator)
+				end
 			end
+		rescue Exception => e
+			Sfp::Agent.logger.error "Error in invoking operator #{operator['name']}\n#{e}\n#{e.backtrace.join("\n")}"
+			return false
 		end
+
 		status
 	end
 
 	def postprocess_delete_vm(operator)
 		@lock_postprocess.synchronize {
 			_, agent_name, _ = operator['name'].split('.', 3)
+
+Sfp::Agent.logger.info "Postprocess delete VM #{agent_name}"
 
 			# update agents database (automatically broadcast to other agents)
 			Sfp::Agent.set_agents({agent_name => nil})
@@ -338,11 +369,15 @@ class Sfp::BSig
 	def postprocess_create_vm(operator)
 		@lock_postprocess.synchronize {
 			refs = operator['name'].split('.')
-			agent_name = refs[1]
 			vms_ref = refs[0..-2].join('.') + '.vms'
+
+			_, agent_name, _ = operator['parameters']['$.vm'].split('.', 3)
+
+Sfp::Agent.logger.info "Postprocess create VM #{agent_name}"
 
 			# update proxy component's state
 			state = Sfp::Agent.get_state
+			return false if not state.is_a?(Hash)
 
 			# get VM's address
 			vms = state.at?(vms_ref)
@@ -352,27 +387,33 @@ class Sfp::BSig
 			# update agents database
 			Sfp::Agent.set_agents(data)
 
-			# get new agent's model from cache database
+			# get new agent's model and BSig model from cache database
 			model = Sfp::Agent.get_cache_model(agent_name)
+			model['model']['in_cloud'] = refs[0..-2].join('.')
 			
 			if not model.nil?
+				address = data[agent_name]['sfpAddress']
+				port = data[agent_name]['sfpPort']
+
 				# push required modules
-				push_modules(model)
+				push_modules(model, address, port)
+
+				# push agent database to new agent
+				code, _ = put_data(address, port, '/agents', {'agents' => JSON.generate(Sfp::Agent.get_agents)})
 
 				# push new agent's model
-				code, _ = put_data(address, port, '/model', {'model' => JSON.generate(model)})
+				code, _ = put_data(address, port, '/model', {'model' => JSON.generate({agent_name => model['model']})})
+
+				# push new agent's BSig model
+				code, _ = put_data(address, port, '/bsig', {'bsig' => JSON.generate(model['bsig'])}) if code == '200'
+
 				return (code == '200')
 			end
 		}
 		false
 	end
 
-	def push_modules(agent_model)
-		return false if !agent_model.is_a?(Hash) or !agent_model['sfpAddress'].is_a?(String)
-		address = agent_model['sfpAddress'].to_s.strip
-		port = agent_model['sfpPort'].to_s.strip
-		return false if address == '' or port == ''
-
+	def push_modules(agent_model, address, port)
 		name = agent_model['_self']
 		finder = Sfp::Helper::SchemaCollector.new
 		{:agent => agent_model}.accept(finder)
@@ -390,24 +431,38 @@ class Sfp::BSig
 			list = ''
 			schemata.each { |m|
 				list += "#{m} " if m != 'object' and File.exist?("#{modules_dir}/#{m}") and
-				                   (not modules.has_key?(m) or modules[m] != get_local_module_hash(m).to_s)
+				                   (not modules.has_key?(m) or modules[m] != get_local_module_hash(m, modules_dir).to_s)
 			}
 
 			return true if list == ''
 
-			if system("cd #{modules_dir}; ./install_module #{address} #{port} #{list} 1>/dev/null 2>/tmp/install_module.error")
-				puts "Push modules #{list}to #{name} [OK]".green
+			if system("cd #{modules_dir}; #{install_module} #{address} #{port} #{list} 1>/dev/null 2>/tmp/install_module.error")
+				Sfp::Agent.logger.info "Push modules #{list}to #{name} [OK]"
 			else
-				puts "Push modules #{list}to #{name} [Failed]".red
+				Sfp::Agent.logger.warn "Push modules #{list}to #{name} [Failed]"
 			end
 
 			return true
 
 		rescue Exception => e
-			puts "[WARN] Cannot push module to #{name} - #{e}".red
+			Sfp::Agent.logger.warn "[WARN] Cannot push module to #{name} - #{e}"
 		end
 
 		false
+	end
+
+	# return the list of Hash value of all modules
+	#
+	def get_local_module_hash(name, modules_dir)
+		module_dir = File.expand_path("#{modules_dir}/#{name}")
+		if File.directory? module_dir
+			if `which md5sum`.strip.length > 0
+				return `find #{module_dir} -type f -exec md5sum {} + | awk '{print $1}' | sort | md5sum | awk '{print $1}'`.strip
+			elsif `which md5`.strip.length > 0
+				return `find #{module_dir} -type f -exec md5 {} + | awk '{print $4}' | sort | md5`.strip
+			end
+		end
+		nil
 	end
 
 end

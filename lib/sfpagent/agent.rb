@@ -66,7 +66,7 @@ module Sfp
 			Sfp::Agent.logger.info "Starting SFP Agent daemons..."
 			puts "Starting SFP Agent daemons..."
 
-			Process.daemon
+			Process.daemon if p[:daemon]
 
 			begin
 				# check modules directory, and create it if it's not exist
@@ -136,16 +136,18 @@ module Sfp
 					Process.kill 0, pid
 					Sfp::Agent.logger.info "SFP Agent daemon is still running."
 					puts "SFP Agent daemon is still running."
+					return false
 				rescue
 					Sfp::Agent.logger.info "SFP Agent daemon has stopped."
 					puts "SFP Agent daemon has stopped."
+					File.delete(PIDFile) if File.exist?(PIDFile)
 				end
 			rescue
 				puts "SFP Agent is not running."
+				File.delete(PIDFile) if File.exist?(PIDFile)
 			end
 
-		ensure
-			File.delete(PIDFile) if File.exist?(PIDFile)
+			true
 		end
 
 		# Print the status of the agent.
@@ -509,13 +511,14 @@ module Sfp
 			end
 		end
 
-		# To delete an agent: { "agent_name" => nil }
-		# To add an agent: { "agent_name" => { "sfpAddress" => "10.0.0.1", "sfpPort" => 1314 } }
+		# parameter:
+		#   :data => To delete an agent: { "agent_name" => nil }
+		#            To add/modify an agent: { "agent_name" => { "sfpAddress" => "10.0.0.1", "sfpPort" => 1314 } }
 		#
 		def self.set_agents(data)
 			data.each { |name,agent|
-				return false if not agent['sfpAddress'].is_a?(String) or agent['sfpAddress'].strip == '' or
-					agent['sfpPort'].to_i <= 0
+				return false if agent.is_a?(Hash) and (not agent['sfpAddress'].is_a?(String) or
+				                agent['sfpAddress'].strip == '' or agent['sfpPort'].to_i <= 0)
 			}
 
 			updated = false
@@ -524,15 +527,16 @@ module Sfp
 				f.flock(File::LOCK_EX)
 				json = f.read
 				agents = (json == '' ? {} : JSON[json])
+				current_hash = agents.hash
 				data.each { |k,v|
 					if !agents.has_key?(k) or v.nil? or agents[k].hash != v.hash
 						agents[k] = v
-						updated = true
 					end
 				}
 				agents.keys.each { |k| agents.delete(k) if agents[k].nil? }
 
-				if updated
+				if current_hash != agents.hash
+					updated = true
 					f.rewind
 					f.write(JSON.generate(agents))
 					f.flush
@@ -540,7 +544,7 @@ module Sfp
 				end
 			}
 
-			if updated # broadcast to other agents
+			if updated # if updated then broadcast to other agents
 				http_data = {'agents' => JSON.generate(data)}
 
 				agents.each { |name,agent|
@@ -656,14 +660,14 @@ module Sfp
 			# Handle HTTP Put request
 			#
 			# uri:
-			#	/model          => receive a new model and save to cached file
+			#	/model          => receive a new model and then save it
+			#  /model/cache    => receive a "cache" model and then save it
 			#	/modules        => save the module if parameter "module" is provided
-			#                     delete the module if parameter "module" is not provided
 			#	/agents         => save the agents' list if parameter "agents" is provided
-			#	                   delete all agents if parameter "agents" is not provided
 			#  /bsig           => receive BSig model and receive it in cached directory
 			#  /bsig/satisfier => receive goal request from other agents and then start
 			#                     a satisfier thread to try to achieve it
+			#
 			def do_PUT(request, response)
 				status = 400
 				content_type = body = ''
