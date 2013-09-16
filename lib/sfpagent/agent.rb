@@ -515,6 +515,16 @@ module Sfp
 			end
 		end
 
+		def self.delete_agents
+			File.open(AgentsDataFile, File::RDWR|File::CREAT, 0644) { |f|
+				f.flock(File::LOCK_EX)
+				f.rewind
+				f.write('{}')
+				f.flush
+				f.truncate(f.pos)
+			}
+		end
+
 		# parameter:
 		#   :data => To delete an agent: { "agent_name" => nil }
 		#            To add/modify an agent: { "agent_name" => { "sfpAddress" => "10.0.0.1", "sfpPort" => 1314 } }
@@ -532,6 +542,7 @@ module Sfp
 				json = f.read
 				agents = (json == '' ? {} : JSON[json])
 				current_hash = agents.hash
+
 				data.each { |k,v|
 					if !agents.has_key?(k) or v.nil? or agents[k].hash != v.hash
 						agents[k] = v
@@ -566,8 +577,9 @@ module Sfp
 
 		def self.get_agents
 			return {} if not File.exist?(AgentsDataFile)
-			return @@agents_database if File.mtime(AgentsDataFile) == @@agents_database_modified_time
-			@@agents_database = JSON[File.read(AgentsDataFile)]
+			#return @@agents_database if File.mtime(AgentsDataFile) == @@agents_database_modified_time
+			#@@agents_database = JSON[File.read(AgentsDataFile)]
+			JSON[File.read(AgentsDataFile)]
 		end
 
 		# A class that handles HTTP request.
@@ -684,18 +696,21 @@ module Sfp
 						status, content_type, body = self.set_model({:query => request.query})
 
 					elsif path =~ /\/model\/cache\/.+/ and request.query.length > 0
-						status, content_type, body = self.set_cache_model({:name => path[13, path.length-13],
-						                                                   :query => request.query})
+						status, content_type, body = self.manage_cache_model({:set => true,
+						                                                      :name => path[13, path.length-13],
+						                                                      :model => request.query['model']})
 
 					elsif path =~ /\/modules\/.+/ and request.query.length > 0
-						status, content_type, body = self.manage_modules({:name => path[9, path.length-9],
-						                                                  :query => request.query})
+						status, content_type, body = self.manage_modules({:install => true,
+						                                                  :name => path[9, path.length-9],
+						                                                  :module => request.query['module']})
 
 					elsif path == '/modules' and request.query.length > 0
-						status, content_type, body = self.manage_modules({:query => request.query})
+						status, content_type, body = self.manage_modules({:install => true,
+						                                                  :modules => request.query})
 
 					elsif path == '/agents' and request.query.has_key?('agents')
-						status, content_type, body = self.set_agents({:query => request.query})
+						status, content_type, body = self.set_agents({:query => request.query['agents']})
 
 					elsif path == '/bsig' and request.query.has_key?('bsig')
 						status, content_type, body = self.set_bsig({:query => request.query})
@@ -711,14 +726,17 @@ module Sfp
 				response.body = body
 			end
 
-			# Handle HTTP Put request
+			# Handle HTTP Delete request
 			#
 			# uri:
-			#	/model          => delete existing model
-			#	/modules        => delete a module with name specified in parameter "module", or
-			#	                   delete all modules if parameter "module" is not provided
-			#	/agents         => delete agents database
-			#  /bsig           => delete existing BSig model
+			#	/model            => delete existing model
+			#  /model/cache      => delete all cache models
+			#  /model/cache/name => delete cache model of agent "name"
+			#	/modules          => delete all modules from module database
+			#	/modules/name     => delete module "name" from module database
+			#	/agents           => delete all agents from agent database
+			#  /agents/name      => delete "name" from agent database
+			#  /bsig             => delete existing BSig model
 			#
 			def do_DELETE(request, response)
 				status = 400
@@ -732,19 +750,19 @@ module Sfp
 						status, content_type, body = self.set_model
 
 					elsif path == '/model/cache'
-						status, content_type, body = self.set_cache_model
+						status, content_type, body = self.manage_cache_model({:delete => true, :name => :all})
 
 					elsif path =~ /\/model\/cache\/.+/
-						status, content_type, body = self.set_cache_model({:name => path[13, path.length-13]})
+						status, content_type, body = self.manage_cache_model({:delete => true, :name => path[13, path.length-13]})
 
 					elsif path == '/modules'
-						status, content_type, body = self.manage_modules({:deleteall => true})
+						status, content_type, body = self.manage_modules({:uninstall => true, :name => :all})
 
 					elsif path =~ /\/modules\/.+/
-						status, content_type, body = self.manage_modules({:name => path[9, path.length-9]})
+						status, content_type, body = self.manage_modules({:uninstall => true, :name => path[9, path.length-9]})
 
 					elsif path == '/agents'
-						status, content_type, body = self.set_agents
+						status, content_type, body = self.manage_agents({:delete => true, :name => :all})
 
 					elsif path == '/bsig'
 						status, content_type, body = self.set_bsig
@@ -754,12 +772,18 @@ module Sfp
 				end
 			end
 
-			def set_agents(p={})
+			def manage_agents(p={})
 				begin
-					if p[:query] and p[:query].has_key?('agents')
-						return [200, '', ''] if Sfp::Agent.set_agents(JSON[p[:query]['agents']])
-					else
-						return [200, '', ''] if Sfp::Agent.set_agents({})
+					if p[:delete]
+						if p[:name] == :all
+							return [200, '', ''] if Sfp::Agent.delete_agents
+						elsif p[:name] != ''
+							return [200, '', ''] if Sfp::Agent.set_agents({p[:name] => nil})
+						else
+							return [400, '', '']
+						end
+					elsif p[:set]
+						return [200, '', ''] if Sfp::Agent.set_agents(p[:agents])
 					end
 				rescue Exception => e
 					@logger.error "Saving agents list [Failed]\n#{e}\n#{e.backtrace.join("\n")}"
@@ -768,18 +792,23 @@ module Sfp
 			end
 
 			def manage_modules(p={})
-				if p[:name]
-					if p[:query]
-						return [200, '', ''] if Sfp::Agent.install_module(p[:name], p[:query]['module'])
+				if p[:install]
+					if p[:name] and p[:module]
+						return [200, '', ''] if Sfp::Agent.install_module(p[:name], p[:module])
+					elsif p[:modules]
+						return [200, '', ''] if Sfp::Agent.install_modules(p[:modules])
 					else
-						return [200, '', ''] if Sfp::Agent.uninstall_module(p[:name])
+						return [400, '', '']
 					end
-				elsif p[:query].length > 0
-					return [200, '', ''] if Sfp::Agent.install_modules(p[:query])
-				else
-					return [200, '', ''] if Sfp::Agent.uninstall_all_modules
+				elsif p[:uninstall]
+					if p[:name] == :all
+						return [200, '', ''] if Sfp::Agent.uninstall_all_modules
+					elsif p[:name] != ''
+						return [200, '', ''] if Sfp::Agent.uninstall_module(p[:name])
+					else
+						return [400, '', '']
+					end
 				end
-
 				[500, '', '']
 			end
 
@@ -792,15 +821,18 @@ module Sfp
 				end
 			end
 
-			def set_cache_model(p={})
-				p[:model] = JSON[p[:query]['model']] if p[:query].is_a?(Hash) and p[:query]['model']
-
-				if p[:name]
-					return [200, '', ''] if Sfp::Agent.set_cache_model(p)
+			def manage_cache_model(p={})
+				if p[:set] and p[:name] and p[:model]
+					Sfp::Agent.set_cache_model(p)
+				elsif p[:delete] and p[:name]
+					if p[:name] == :all
+						Sfp::Agent.set_cache_model
+					else
+						Sfp::Agent.set_cache_model(p)
+					end
 				else
-					return [200, '', ''] if Sfp::Agent.set_cache_model
+					return [400, '', '']
 				end
-
 				[500, '', '']
 			end
 
