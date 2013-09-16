@@ -559,16 +559,18 @@ module Sfp
 				end
 			}
 
-			if updated # if updated then broadcast to other agents
-				http_data = {'agents' => JSON.generate(data)}
-
-				agents.each { |name,agent|
-					begin
-						code, _ = NetHelper.put_data(agent['sfpAddress'], agent['sfpPort'], '/agents', http_data, 5, 20)
-						raise Exception if code != '200'
-					rescue Exception => e
-						Sfp::Agent.logger.warn "Push agents list to #{agent['sfpAddress']}:#{agent['sfpPort']} [Failed]"
-					end
+			if updated
+				Thread.new {
+					# if updated then broadcast to other agents
+					http_data = {'agents' => JSON.generate(data)}
+					agents.each { |name,agent|
+						begin
+							code, _ = NetHelper.put_data(agent['sfpAddress'], agent['sfpPort'], '/agents', http_data, 5, 20)
+							raise Exception if code != '200'
+						rescue Exception => e
+							Sfp::Agent.logger.warn "Push agents list to #{agent['sfpAddress']}:#{agent['sfpPort']} [Failed]"
+						end
+					}
 				}
 			end
 
@@ -577,7 +579,7 @@ module Sfp
 
 		def self.get_agents
 			return {} if not File.exist?(AgentsDataFile)
-			return @@agents_database if File.mtime(AgentsDataFile) != @@agents_database_modified_time
+			return @@agents_database if File.mtime(AgentsDataFile) == @@agents_database_modified_time
 			@@agents_database_modified_time = File.mtime(AgentsDataFile)
 			@@agents_database = JSON[File.read(AgentsDataFile)]
 		end
@@ -693,7 +695,7 @@ module Sfp
 					path = (request.path[-1,1] == '/' ? ryyequest.path.chop : request.path)
 
 					if path == '/model' and request.query.has_key?('model')
-						status, content_type, body = self.set_model({:query => request.query})
+						status, content_type, body = self.set_model({:model => request.query['model']})
 
 					elsif path =~ /\/model\/cache\/.+/ and request.query.length > 0
 						status, content_type, body = self.manage_cache_model({:set => true,
@@ -824,19 +826,19 @@ module Sfp
 
 			def manage_cache_model(p={})
 				if p[:set] and p[:name] and p[:model]
+					p[:model] = JSON[p[:model]]
 					return [200, '', ''] if Sfp::Agent.set_cache_model(p)
 				elsif p[:delete] and p[:name]
 					if p[:name] == :all
 						return [200, '', ''] if Sfp::Agent.set_cache_model
 					else
-						return [200, '', ''] if Sfp::Agent.set_cache_model(p)
+						return [200, '', ''] if Sfp::Agent.set_cache_model({:name => p[:name]})
 					end
 				else
 					return [400, '', '']
 				end
 				[500, '', '']
 			end
-
 
 			def get_sfp(p={})
 				begin
@@ -864,9 +866,9 @@ module Sfp
 			end
 
 			def set_model(p={})
-				if p[:query] and p[:query].has_key?('model')
+				if p[:model]
 					# If setting the model was success, then return '200' status.
-					return [200, '', ''] if Sfp::Agent.set_model(JSON[p[:query]['model']])
+					return [200, '', ''] if Sfp::Agent.set_model(JSON[p[:model]])
 				else
 					# Removing the existing model by setting an empty model, if it's success then return '200' status.
 					return [200, '', ''] if Sfp::Agent.set_model({})
