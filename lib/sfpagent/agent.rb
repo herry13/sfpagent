@@ -824,12 +824,12 @@ module Sfp
 
 			def manage_cache_model(p={})
 				if p[:set] and p[:name] and p[:model]
-					Sfp::Agent.set_cache_model(p)
+					return [200, '', ''] if Sfp::Agent.set_cache_model(p)
 				elsif p[:delete] and p[:name]
 					if p[:name] == :all
-						Sfp::Agent.set_cache_model
+						return [200, '', ''] if Sfp::Agent.set_cache_model
 					else
-						Sfp::Agent.set_cache_model(p)
+						return [200, '', ''] if Sfp::Agent.set_cache_model(p)
 					end
 				else
 					return [400, '', '']
