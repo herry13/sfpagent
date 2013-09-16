@@ -1,7 +1,7 @@
 require 'thread'
 
 class Sfp::BSig
-	include Sfp::Net::Helper
+	include Sfp::Helper::Net
 
 	SleepTime = 5
 	MaxTries = 5

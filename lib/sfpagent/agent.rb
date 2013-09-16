@@ -11,7 +11,7 @@ require 'digest/md5'
 
 module Sfp
 	module Agent
-		NetHelper = Object.new.extend(Sfp::Net::Helper)
+		NetHelper = Object.new.extend(Sfp::Helper::Net)
 
 		CacheDir = (Process.euid == 0 ? '/var/sfpagent' : File.expand_path('~/.sfpagent'))
 		Dir.mkdir(CacheDir, 0700) if not File.exist?(CacheDir)
