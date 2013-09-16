@@ -784,7 +784,7 @@ module Sfp
 							return [400, '', '']
 						end
 					elsif p[:set]
-						return [200, '', ''] if Sfp::Agent.set_agents(p[:agents])
+						return [200, '', ''] if Sfp::Agent.set_agents(JSON[p[:agents]])
 					end
 				rescue Exception => e
 					@logger.error "Saving agents list [Failed]\n#{e}\n#{e.backtrace.join("\n")}"
