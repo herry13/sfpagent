@@ -560,6 +560,7 @@ module Sfp
 			}
 
 			if updated
+				@@agents_database = agents
 				Thread.new {
 					# if updated then broadcast to other agents
 					http_data = {'agents' => JSON.generate(data)}
@@ -579,7 +580,9 @@ module Sfp
 
 		def self.get_agents
 			return {} if not File.exist?(AgentsDataFile)
-			return @@agents_database if File.mtime(AgentsDataFile) == @@agents_database_modified_time
+			modified_time = File.mtime(AgentsDataFile)
+			return @@agents_database if modified_time == @@agents_database_modified_time and
+			                            (Time.new - modified_time) < 60
 			@@agents_database_modified_time = File.mtime(AgentsDataFile)
 			@@agents_database = JSON[File.read(AgentsDataFile)]
 		end
