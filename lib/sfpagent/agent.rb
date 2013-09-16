@@ -53,6 +53,10 @@ module Sfp
 			@@config
 		end
 
+		def self.runtime
+			@@runtime
+		end
+
 		# Start the agent.
 		#
 		# options:

@@ -108,8 +108,8 @@ class Sfp::BSig
 		operator = select_operator(flaws, operators, pi)
 		return :failure if operator.nil?
 
-# debugging
-#Sfp::Agent.logger.info "[#{mode}] Flaws: #{JSON.generate(flaws)}"
+		# debugging
+		#Sfp::Agent.logger.info "[#{mode}] Flaws: #{JSON.generate(flaws)}"
 
 		return :ongoing if not lock_operator(operator)
 
@@ -118,8 +118,8 @@ class Sfp::BSig
 		next_pi = operator['pi'] + 1
 		pre_local, pre_remote = split_preconditions(operator)
 
-# debugging
-#Sfp::Agent.logger.info "[#{mode}] local-flaws: #{JSON.generate(pre_local)}, remote-flaws: #{JSON.generate(pre_remote)}"
+		# debugging
+		#Sfp::Agent.logger.info "[#{mode}] local-flaws: #{JSON.generate(pre_local)}, remote-flaws: #{JSON.generate(pre_remote)}"
 
 		status = nil
 		tries = MaxTries
@@ -149,7 +149,6 @@ class Sfp::BSig
 	end
 
 	def achieve_remote_goal(id, goal, pi, mode)
-
 		if goal.length > 0
 			agents = Sfp::Agent.get_agents
 			split_goal_by_agent(goal).each do |agent_name,agent_goal|
@@ -161,6 +160,7 @@ class Sfp::BSig
 				end
 			end
 		end
+
 		true
 	end
 
@@ -178,7 +178,6 @@ class Sfp::BSig
 		return false if not @enabled
 
 		bsig = Sfp::Agent.get_bsig
-
 		return false if bsig.nil? or id < bsig['id']
 
 		status = nil
@@ -242,38 +241,67 @@ class Sfp::BSig
 	end
 
 	def split_goal_by_agent(goal)
-		#agents = Sfp::Agent.get_agents
 		agent_goal = {}
 		goal.each { |var,val|
 			_, agent_name, _ = var.split('.', 3)
-			#fail "Agent #{agent_name} is not in database!" if not agents.has_key?(agent_name)
 			agent_goal[agent_name] = {} if not agent_goal.has_key?(agent_name)
 			agent_goal[agent_name][var] = val
 		}
 		agent_goal
 	end
 
-	def send_goal_to_agent(agent, id, g, pi, agent_name='', mode)
+	def send_goal_to_agent(agent, id, goal, pi, agent_name='', mode)
 		begin
 			data = {'id' => id,
-			        'goal' => JSON.generate(g),
+			        'goal' => JSON.generate(goal),
 			        'pi' => pi}
-	
 			Sfp::Agent.logger.info "[#{mode}] Request goal to: #{agent_name} [WAIT]"
-	
 			code, _ = put_data(agent['sfpAddress'], agent['sfpPort'], SatisfierPath, data)
-	
 			Sfp::Agent.logger.info "[#{mode}] Request goal to: #{agent_name} - status: #{code}"
-	
 			(code == '200')
 		rescue
+			return true if check_not_created_agent(agent_name, goal)
 			false
 		end
+	end
+
+	def check_not_created_agent(agent_name, goal)
+		state = Sfp::Agent.get_state
+		vms = {}
+		Sfp::Agent.runtime.cloudfinder.clouds.each { |cloud|
+			cloud.sub!(/^\$\./, '')
+			cloud_ref = "$.#{Sfp::Agent.whoami?}.#{cloud}"
+			ref = "#{cloud_ref}.vms"
+			vms = state.at?(ref)
+			vms.each { |name,status| vms[name] = {'created' => true} } if vms.is_a?(Hash)
+		}
+		if not vms.has_key?(agent_name)
+			state = {agent_name => {'created' => false, 'in_cloud' => nil}}
+			goal.each { |var,val| return false if state.at?(var) != val }
+			return true
+		end
+		false
 	end
 
 	def get_current_state
 		state = Sfp::Agent.get_state
 		fail "BSig engine cannot get current state" if state == false
+
+		Sfp::Agent.runtime.cloudfinder.clouds.each { |cloud|
+			cloud.sub!(/^\$\./, '')
+			cloud_ref = "$.#{Sfp::Agent.whoami?}.#{cloud}"
+			ref = "#{cloud_ref}.vms"
+			vms = state.at?(ref)
+			if vms.is_a?(Hash)
+				vms.each { |name,status|
+					state[name] = { 'created' => true,
+					                'in_cloud' => cloud_ref,
+					                'sfpAddress' => status['ip'],
+					                'sfpPort' => Sfp::Agent::DefaultPort }
+				}
+			end
+		}
+
 		state
 	end
 
@@ -281,13 +309,14 @@ class Sfp::BSig
 		return goal.clone if current.nil?
 		flaws = {}
 		goal.each { |var,val|
-			_, agent_name, _ = var.split('.', 3)
-			if agent_name != Sfp::Agent.whoami?
-				current_value = Sfp::Resource.resolve(var)
-			else
-				current_value = current.at?(var)
+			current_value = current.at?(var)
+			if current_value.is_a?(Sfp::Unknown)
+				_, agent_name, _ = var.split('.', 3)
+				if agent_name != Sfp::Agent.whoami?
+					s = {agent_name => {'created' => false, 'in_cloud' => nil}}
+					current_value = s.at?(var)
+				end
 			end
-
 			if current_value.is_a?(Sfp::Undefined)
 				flaws[var] = val if not val.is_a?(Sfp::Undefined)
 			else
@@ -359,7 +388,7 @@ class Sfp::BSig
 		@lock_postprocess.synchronize {
 			_, agent_name, _ = operator['name'].split('.', 3)
 
-Sfp::Agent.logger.info "Postprocess delete VM #{agent_name}"
+			Sfp::Agent.logger.info "Postprocess delete VM #{agent_name}"
 
 			# update agents database (automatically broadcast to other agents)
 			Sfp::Agent.set_agents({agent_name => nil})
@@ -373,7 +402,7 @@ Sfp::Agent.logger.info "Postprocess delete VM #{agent_name}"
 
 			_, agent_name, _ = operator['parameters']['$.vm'].split('.', 3)
 
-Sfp::Agent.logger.info "Postprocess create VM #{agent_name}"
+			Sfp::Agent.logger.info "Postprocess create VM #{agent_name}"
 
 			# update proxy component's state
 			state = Sfp::Agent.get_state
@@ -390,6 +419,8 @@ Sfp::Agent.logger.info "Postprocess create VM #{agent_name}"
 			# get new agent's model and BSig model from cache database
 			model = Sfp::Agent.get_cache_model(agent_name)
 			model['model']['in_cloud'] = refs[0..-2].join('.')
+			model['model']['sfpAddress'] = vms[agent_name]['ip']
+			model['model']['sfpPort'] = Sfp::Agent::DefaultPort
 			
 			if not model.nil?
 				address = data[agent_name]['sfpAddress']
@@ -467,20 +498,4 @@ Sfp::Agent.logger.info "Postprocess create VM #{agent_name}"
 
 end
 
-module Sfp::Helper
-end
-
-class Sfp::Helper::SchemaCollector
-	attr_reader :schemata
-	def initialize
-		@schemata = []
-	end
-		
-	def visit(name, value, parent)
-		if value.is_a?(Hash) and value.has_key?('_classes')
-			value['_classes'].each { |s| @schemata << s }
-		end
-		true
-	end
-end
 

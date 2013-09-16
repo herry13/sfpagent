@@ -1,12 +1,13 @@
 require 'thread'
 
 class Sfp::Runtime
-	attr_reader :root
+	attr_reader :root, :cloudfinder
 
 	def initialize(model)
 		@mutex_procedure = Mutex.new
 		@mutex_get_state = Mutex.new
 		@root = nil
+		@cloudfinder = Sfp::Helper::CloudFinder.new
 		set_model(model)
 	end
 
@@ -48,6 +49,9 @@ class Sfp::Runtime
 				root_model.accept(ParentEliminator)
 				@root = update_model(root_model, root_model, '$')
 				@root.accept(ParentGenerator)
+
+				@cloudfinder.clouds = []
+				@model.accept(@cloudfinder.reset)
 			end
 		}
 	end
