@@ -42,6 +42,9 @@ module Sfp
 
 		@@runtime_lock = Mutex.new
 
+		@@agents_database = {}
+		@@agents_database_modified_time = nil
+
 		def self.logger
 			@@logger
 		end
@@ -574,7 +577,9 @@ module Sfp
 
 		def self.get_agents
 			return {} if not File.exist?(AgentsDataFile)
-			JSON[File.read(AgentsDataFile)]
+			return @@agents_database if File.mtime(AgentsDataFile) != @@agents_database_modified_time
+			@@agents_database_modified_time = File.mtime(AgentsDataFile)
+			@@agents_database = JSON[File.read(AgentsDataFile)]
 		end
 
 		# A class that handles HTTP request.
