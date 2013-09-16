@@ -42,9 +42,6 @@ module Sfp
 
 		@@runtime_lock = Mutex.new
 
-		@@agents_database = nil
-		@@agents_database_modified_time = nil
-
 		def self.logger
 			@@logger
 		end
@@ -577,8 +574,6 @@ module Sfp
 
 		def self.get_agents
 			return {} if not File.exist?(AgentsDataFile)
-			#return @@agents_database if File.mtime(AgentsDataFile) == @@agents_database_modified_time
-			#@@agents_database = JSON[File.read(AgentsDataFile)]
 			JSON[File.read(AgentsDataFile)]
 		end
 
@@ -710,7 +705,8 @@ module Sfp
 						                                                  :modules => request.query})
 
 					elsif path == '/agents' and request.query.has_key?('agents')
-						status, content_type, body = self.set_agents({:query => request.query['agents']})
+						status, content_type, body = self.manage_agents({:set => true,
+						                                                 :agents => request.query['agents']})
 
 					elsif path == '/bsig' and request.query.has_key?('bsig')
 						status, content_type, body = self.set_bsig({:query => request.query})
