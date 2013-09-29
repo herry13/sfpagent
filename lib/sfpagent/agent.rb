@@ -168,8 +168,11 @@ module Sfp
 		end
 
 		def self.get_cache_model(name)
-			model = JSON[File.read(CacheModelFile)]
-			(model.has_key?(name) ? model[name] : nil)
+			if File.exist?(CacheModelFile)
+				model = JSON[File.read(CacheModelFile)]
+				return model[name] if model.has_key?(name)
+			end
+			nil
 		end
 
 		def self.set_cache_model(p={})
@@ -181,7 +184,7 @@ module Sfp
 				if p[:name]
 					if p[:model]
 						model[p[:name]] = p[:model]
-						Sfp::Agent.logger.info "Setting cache model for #{p[:name]}..."
+						Sfp::Agent.logger.info "Saving cache model for #{p[:name]}..."
 					else
 						model.delete(p[:name]) if model.has_key?(p[:name])
 						Sfp::Agent.logger.info "Deleting cache model for #{p[:name]}..."
@@ -310,6 +313,25 @@ module Sfp
 				end
 			}
 			false
+		end
+
+		def self.resolve_model(path)
+			return Sfp::Undefined.new if !defined?(@@runtime) or @@runtime.nil? or @@runtime.root.nil?
+			begin
+				path = path.simplify
+				value = @@runtime.model.at?(path)
+				if value.is_a?(Sfp::Unknown)
+					_, name, rest = path.split('.', 3)
+					model = get_cache_model(name)
+					if !model.nil? and model.has_key?('model')
+						return (rest.to_s.length <= 0 ? model['model'] : model['model'].at?("$.#{rest}"))
+					end
+				end
+				return value
+			rescue Exception => e
+				Sfp::Agent.logger.error "Resolve model #{path} [Failed] #{e}\n#{e.backtrace.join("\n")}"
+			end
+			Sfp::Undefined.new
 		end
 
 		def self.resolve(path, as_sfp=true)
