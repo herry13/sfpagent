@@ -27,10 +27,6 @@ module Sfp::Resource
 		model.each { |k,v| @model[k] = v }
 	end
 
-	def apply(p={})
-		true
-	end
-
 	def to_model
 		@state = {}
 		@model.each { |k,v| @state[k] = v }
@@ -39,7 +35,13 @@ module Sfp::Resource
 	alias_method :reset, :to_model
 
 	def resolve(path)
-		Sfp::Agent.resolve(path.simplify)
+		Sfp::Agent.resolve(path)
+	end
+
+	alias_method :resolve_state, :resolve
+
+	def resolve_model(path)
+		Sfp::Agent.resolve_model(path)
 	end
 
 	protected
