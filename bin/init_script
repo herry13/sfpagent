@@ -1,0 +1,51 @@
+#! /bin/sh
+
+### BEGIN INIT INFO
+# Provides:		   sfpagent
+# Required-Start:	
+# Required-Stop:	
+# Default-Start:	2 3 4 5
+# Default-Stop:		
+# Short-Description:	SFP Agent Daemon
+### END INIT INFO
+
+set -e
+
+bin="/home/herry/workspace/sfp/sfpagent/bin/sfpagent"
+
+test -x $bin || exit 0
+
+umask 022
+
+. /lib/lsb/init-functions
+
+if [ `/usr/bin/id -u` != "0" ]; then
+  log_daemon_msg "Error: must be run with root"
+  exit 1
+fi
+
+export PATH="${PATH:+$PATH:}/usr/sbin:/sbin:/usr/local/bin"
+
+case "$1" in
+  start)
+	log_daemon_msg "Starting SFP Agent daemon" "sfpagent" || true
+   $bin -s
+	;;
+  stop)
+	log_daemon_msg "Stopping SFP Agent daemon" "sfpagent" || true
+   $bin -t
+	;;
+  restart)
+	log_daemon_msg "Restarting SFP Agent daemon" "sfpagent" || true
+   $bin -r
+	;;
+  status)
+	$bin -a && exit 0 || exit $?
+	;;
+
+  *)
+	log_action_msg "Usage: /etc/init.d/sfpagent {start|stop|restart|status}" || true
+	exit 1
+esac
+
+exit 0
