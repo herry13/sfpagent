@@ -59,6 +59,7 @@ class Sfp::BSig
 				wait_for_satisfier?
 	
 				bsig = Sfp::Agent.get_bsig
+				bsig['operators'].sort! { |op1,op2| op1['pi'] <=> op2['pi'] }
 				if bsig.nil?
 					exec_status = :no_bsig
 					sleep SleepTime
@@ -92,7 +93,13 @@ class Sfp::BSig
 		end
 	end
 
-	# returns
+	# @param id         BSig's id
+	# @param goal       goal state
+	# @param operators  an array of sorted (by 'pi') operators
+	# @param pi         current priority index value
+	# @param mode       'main' thread or 'satisfier' thread
+	#
+	# @return
 	#   :no_flaw  => there is no goal-flaw
 	#   :failure  => there is a failure on achieving the goal
 	#   :ongoing  => the selected operator is being executed
@@ -105,12 +112,27 @@ class Sfp::BSig
 		flaws = compute_flaws(goal, current)
 		return :no_flaw if flaws.length <= 0
 
-		operator = select_operator(flaws, operators, pi)
-		return :failure if operator.nil?
-
 		# debugging
 		#Sfp::Agent.logger.info "[#{mode}] Flaws: #{JSON.generate(flaws)}"
 
+		operator = select_operator(flaws, operators, pi)
+		return :failure if operator.nil?
+		
+		execute_operator(operator, id, operators, mode)
+	end
+
+	def parallel_achieve_local_id(id, goal, operators, pi, mode)
+		current = get_current_state
+		flaws = compute_flaws(goal, current)
+		return :no_flaw if flaws.length <= 0
+		
+		operators = select_operators(flaws, operators, pi)
+		return :failure if operators == :failure
+		
+		# TODO - execute operators in parallel
+	end
+	
+	def execute_operator(operator, id, operators, mode)
 		return :ongoing if not lock_operator(operator)
 
 		Sfp::Agent.logger.info "[#{mode}] Selected operator: #{operator['name']}"
@@ -180,6 +202,7 @@ class Sfp::BSig
 		bsig = Sfp::Agent.get_bsig
 		return false if bsig.nil? or id < bsig['id']
 
+		bsig['operators'].sort! { |op1,op2| op1['pi'] <=> op2['pi'] }
 		status = nil
 		tries = MaxTries
 		begin
@@ -327,19 +350,41 @@ class Sfp::BSig
 		flaws
 	end
 
-	def select_operator(flaws, operators, pi)
-		selected_operator = nil
-		operators.each { |op|
+	# @param flaws      a map of flaws (variable-value) that should be repaired
+	# @param operators  a sorted-list of operators (sorted by 'pi')
+	# @param pi         minimum priority-index value
+	#
+	# @return           a list of applicable operators, or symbol :failed if all flaws cannot be repaired
+	#
+	def select_operators(flaws, operators, pi)
+		selected_operator = []
+		repaired = {}
+		operators.each do |op|
 			next if op['pi'] < pi
 			if can_repair?(op, flaws)
-				if selected_operator.nil?
-					selected_operator = op
-				elsif selected_operator['pi'] > op['pi']
-					selected_operator = op
-				end
+				selected_operator << op
+				op['effect'].each { |var,val| repaired[var] = val if flaws[var] == val }
 			end
-		}
+			break if repaired.length >= flaws.length
+		end
+		return :failure if repaired.length < flaws.length
 		selected_operator
+	end
+	
+	def select_operator(flaws, operators, pi)
+		#selected_operator = nil
+		operators.each do |op|
+			next if op['pi'] < pi
+			return op if can_repair?(op, flaws)
+			#	if selected_operator.nil?
+			#		selected_operator = op
+			#	elsif selected_operator['pi'] > op['pi']
+			#		selected_operator = op
+			#	end
+			end
+		end
+		#selected_operator
+		nil
 	end
 
 	def can_repair?(operator, flaws)
