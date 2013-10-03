@@ -68,7 +68,7 @@ class Sfp::BSig
 					if exec_status == :failure
 						Sfp::Agent.logger.error "[main] Executing BSig model [Failed]"
 						sleep SleepTime
-					elsif exec_status == :no_flaw
+					elsif exec_status == :no_flaw or exec_status == :pending
 						sleep SleepTime
 					end
 				end
@@ -102,7 +102,7 @@ class Sfp::BSig
 	# @return
 	#   :no_flaw  => there is no goal-flaw
 	#   :failure  => there is a failure on achieving the goal
-	#   :ongoing  => the selected operator is being executed
+	#   :pending  => the selected operator is being executed
 	#   :repaired => some goal-flaws have been repaired, but the goal may have other flaws
 	#
 	def sequential_achieve_local_goal(id, goal, operators, pi, mode)
@@ -127,7 +127,7 @@ class Sfp::BSig
 	# @return
 	#   :no_flaw  => there is no goal-flaw
 	#   :failure  => there is a failure on achieving the goal
-	#   :ongoing  => the selected operator is being executed
+	#   :pending  => the selected operator is being executed
 	#   :repaired => some goal-flaws have been repaired, but the goal may have other flaws
 	#
 	def achieve_local_goal(id, goal, operators, pi, mode)
@@ -142,19 +142,24 @@ class Sfp::BSig
 
 		total = operators.length
 		status = []
-		operators_lock = Mutex.new
+		lock = Mutex.new
 		operators.each do |operator|
 			Thread.new {
+begin
 				stat = execute_operator(operator, id, operators, mode)
 				Sfp::Agent.logger.info "[#{mode}] #{operator['name']}{#{JSON.generate(operator['parameters'])}} => #{stat}"
-				operators_lock.synchronize { status << stat }
+				lock.synchronize { status << stat }
+				Sfp::Agent.logger.info "[#{mode}] thread - status: #{status.inspect}"
+rescue Exception => e
+	Sfp::Agent.logger.info "#{e}\n#{e.backtrace.join("\n")}"
+end
 			}
 		end
 		wait? { status.length >= operators.length }
 		Sfp::Agent.logger.info "[#{mode}] exec status: #{status.inspect}"
 		status.each { |stat|
 			return :failure if stat == :failure
-			return :ongoing if stat == :ongoing
+			return :pending if stat == :ongoing
 		}
 		:repaired
 	end
@@ -166,7 +171,7 @@ class Sfp::BSig
 	end
 	
 	def execute_operator(operator, id, operators, mode)
-		return :ongoing if not lock_operator(operator)
+		return :pending if not lock_operator(operator)
 
 		status = :failure
 
@@ -185,14 +190,14 @@ class Sfp::BSig
 				status = achieve_local_goal(id, pre_local, operators, next_pi, mode)
 				if status == :no_flaw or status == :failure or not @enabled
 					break
-				elsif status == :ongoing
+				elsif status == :pending
 					sleep SleepTime
 					tries += 1
 				elsif status == :repaired
 					tries = MaxTries
 				end
 				tries -= 1
-			end until tries <= 0
+			end until tries <= 0 and @enabled
 	
 			if status != :no_flaw or
 				not achieve_remote_goal(id, pre_remote, next_pi, mode) or
@@ -263,7 +268,7 @@ class Sfp::BSig
 			status = achieve_local_goal(bsig['id'], goal, bsig['operators'], pi, :satisfier)
 			if status == :no_flaw or status == :failure or not @enabled
 				break
-			elsif status == :ongoing
+			elsif status == :pending
 				sleep SleepTime
 				tries += 1
 			elsif status == :repaired
