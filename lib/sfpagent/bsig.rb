@@ -155,11 +155,11 @@ rescue Exception => e
 end
 			}
 		end
-		wait? { status.length < operators.length }
+		wait? { status.length >= operators.length }
 		Sfp::Agent.logger.info "[#{mode}] exec status: #{status.inspect}"
 		status.each { |stat|
 			return :failure if stat == :failure
-			return :pending if stat == :ongoing
+			return :pending if stat == :pending
 		}
 		:repaired
 	end
@@ -228,7 +228,7 @@ end
 					lock.synchronize { status << stat }
 				}
 			end
-			wait? { status.length < agents_goal.length }
+			wait? { status.length >= agents_goal.length }
 			Sfp::Agent.logger.info "[#{mode}] achieve_remote_goal: #{status}"
 			status.each { |stat| return false if !stat }
 		end
