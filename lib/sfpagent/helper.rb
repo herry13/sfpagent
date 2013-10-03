@@ -29,7 +29,7 @@ module Sfp::Helper::Net
 		http_request(uri, req, open_timeout, read_timeout)
 	end
 
-	private
+	protected
 	def create_uri(address, port, path)
 		address = address.to_s.strip
 		port = port.to_s.strip
