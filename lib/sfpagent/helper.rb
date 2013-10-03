@@ -58,6 +58,7 @@ module Sfp::Helper::Net
 		http.open_timeout = open_timeout
 		http.read_timeout = read_timeout
 		http.start
+		Sfp::Agent.logger.info "HTTP start #{http}"
 		http.request(request) { |res| return [res.code, res.body] }
 	end	
 end
