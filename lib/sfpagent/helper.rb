@@ -10,7 +10,6 @@ module Sfp::Helper::Net
 	end
 
 	def put_data(address, port, path, data, open_timeout=5, read_timeout=1800)
-		Sfp::Agent.logger.info "Put data: #{address}:#{port} #{path}"
 		uri = create_uri(address, port, path)
 		req = Net::HTTP::Put.new(uri.path)
 		req.set_form_data(data)
@@ -58,7 +57,6 @@ module Sfp::Helper::Net
 		http.open_timeout = open_timeout
 		http.read_timeout = read_timeout
 		http.start
-		Sfp::Agent.logger.info "HTTP start #{http}"
 		http.request(request) { |res| return [res.code, res.body] }
 	end	
 end
