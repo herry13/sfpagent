@@ -212,6 +212,7 @@ class Sfp::BSig
 			agents_goal.each do |agent_name,agent_goal|
 				Thread.new {
 					stat = achieve_remote_agent_goal(agents, agent_name, agent_goal, id, pi, mode)
+					Sfp::Agent.logger.info "remote goal => #{agent_name}: #{agent_goal.inspect} - #{stat}"
 					lock.synchronize { status << stat }
 				}
 			end
@@ -324,11 +325,12 @@ class Sfp::BSig
 			data = {'id' => id,
 			        'goal' => JSON.generate(goal),
 			        'pi' => pi}
-			Sfp::Agent.logger.info "[#{mode}] Request goal to: #{agent_name} [WAIT]"
+			Sfp::Agent.logger.info "[#{mode}] Request goal to #{agent_name} [WAIT]"
 			code, _ = put_data(agent['sfpAddress'], agent['sfpPort'], SatisfierPath, data)
-			Sfp::Agent.logger.info "[#{mode}] Request goal to: #{agent_name} - status: #{code}"
+			Sfp::Agent.logger.info "[#{mode}] Request goal to #{agent_name} - status: #{code}"
 			(code == '200')
-		rescue
+		rescue Exception => exp
+			Sfp::Agent.logger.info "[#{mode}] Request goal to #{agent_name} - error: #{exp}\n#{exp.bracktrace.join("\n")}"
 			return true if check_not_created_agent(agent_name, goal)
 			false
 		end
