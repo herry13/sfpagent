@@ -145,14 +145,9 @@ class Sfp::BSig
 		lock = Mutex.new
 		operators.each do |operator|
 			Thread.new {
-begin
 				stat = execute_operator(operator, id, operators, mode)
 				Sfp::Agent.logger.info "[#{mode}] #{operator['name']}{#{JSON.generate(operator['parameters'])}} => #{stat}"
 				lock.synchronize { status << stat }
-				Sfp::Agent.logger.info "[#{mode}] thread - status: #{status.inspect}"
-rescue Exception => e
-	Sfp::Agent.logger.info "#{e}\n#{e.backtrace.join("\n")}"
-end
 			}
 		end
 		wait? { status.length >= operators.length }
