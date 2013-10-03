@@ -59,11 +59,11 @@ class Sfp::BSig
 				wait_for_satisfier?
 	
 				bsig = Sfp::Agent.get_bsig
-				bsig['operators'].sort! { |op1,op2| op1['pi'] <=> op2['pi'] }
 				if bsig.nil?
 					exec_status = :no_bsig
 					sleep SleepTime
 				else
+					bsig['operators'].sort! { |op1,op2| op1['pi'] <=> op2['pi'] }
 					exec_status = achieve_local_goal(bsig['id'], bsig['goal'], bsig['operators'], 1, :main)
 					if exec_status == :failure
 						Sfp::Agent.logger.error "[main] Executing BSig model [Failed]"
@@ -105,15 +105,12 @@ class Sfp::BSig
 	#   :ongoing  => the selected operator is being executed
 	#   :repaired => some goal-flaws have been repaired, but the goal may have other flaws
 	#
-	def achieve_local_goal(id, goal, operators, pi, mode)
+	def sequential_achieve_local_goal(id, goal, operators, pi, mode)
 		operator = nil
 
 		current = get_current_state
 		flaws = compute_flaws(goal, current)
 		return :no_flaw if flaws.length <= 0
-
-		# debugging
-		#Sfp::Agent.logger.info "[#{mode}] Flaws: #{JSON.generate(flaws)}"
 
 		operator = select_operator(flaws, operators, pi)
 		return :failure if operator.nil?
@@ -121,7 +118,19 @@ class Sfp::BSig
 		execute_operator(operator, id, operators, mode)
 	end
 
-	def parallel_achieve_local_id(id, goal, operators, pi, mode)
+	# @param id         BSig's id
+	# @param goal       goal state
+	# @param operators  an array of sorted (by 'pi') operators
+	# @param pi         current priority index value
+	# @param mode       'main' thread or 'satisfier' thread
+	#
+	# @return
+	#   :no_flaw  => there is no goal-flaw
+	#   :failure  => there is a failure on achieving the goal
+	#   :ongoing  => the selected operator is being executed
+	#   :repaired => some goal-flaws have been repaired, but the goal may have other flaws
+	#
+	def achieve_local_goal(id, goal, operators, pi, mode)
 		current = get_current_state
 		flaws = compute_flaws(goal, current)
 		return :no_flaw if flaws.length <= 0
@@ -129,13 +138,37 @@ class Sfp::BSig
 		operators = select_operators(flaws, operators, pi)
 		return :failure if operators == :failure
 		
-		# TODO - execute operators in parallel
+		Sfp::Agent.logger.info "total operators: #{operators.length}"
+
+		total = operators.length
+		status = []
+		operators_lock = Mutex.new
+		operators.each do |operator|
+			Thread.new {
+				stat = execute_operator(operator, id, operators, mode)
+				Sfp::Agent.logger.info "#{operator['name']}{#{JSON.generate(operator['parameters'])}} => #{stat}"
+				operators_lock.synchronize { status << stat }
+			}
+		end
+		wait? { status.length >= operators.length }
+		Sfp::Agent.logger.info "exec status: #{status.inspect}"
+		status.each { |stat|
+			return :failure if stat == :failure
+			return :ongoing if stat == :ongoing
+		}
+		:repaired
+	end
+
+	def wait?
+		until yield do
+			sleep 1
+		end
 	end
 	
 	def execute_operator(operator, id, operators, mode)
 		return :ongoing if not lock_operator(operator)
 
-		Sfp::Agent.logger.info "[#{mode}] Selected operator: #{operator['name']}"
+		Sfp::Agent.logger.info "[#{mode}] Selected operator: #{operator['id']}:#{operator['name']}{#{JSON.generate(operator['parameters'])}}"
 
 		next_pi = operator['pi'] + 1
 		pre_local, pre_remote = split_preconditions(operator)
@@ -173,16 +206,29 @@ class Sfp::BSig
 	def achieve_remote_goal(id, goal, pi, mode)
 		if goal.length > 0
 			agents = Sfp::Agent.get_agents
-			split_goal_by_agent(goal).each do |agent_name,agent_goal|
-				if agents.has_key?(agent_name)
-					return false if agents[agent_name]['sfpAddress'].to_s == ''
-					return false if not send_goal_to_agent(agents[agent_name], id, agent_goal, pi, agent_name, mode)
-				else
-					return false if not verify_state_of_not_exist_agent(agent_name, agent_goal)
-				end
+			status = []
+			lock = Mutex.new
+			agents_goal = split_goal_by_agent(goal)
+			agents_goal.each do |agent_name,agent_goal|
+				Thread.new {
+					stat = achieve_remote_agent_goal(agents, agent_name, agent_goal, id, pi, mode)
+					lock.synchronize { status << stat }
+				}
 			end
+			wait? { status.length >= agents_goal.length }
+			Sfp::Agent.logger.info "achieve_remote_goal: #{status}"
+			status.each { |stat| return false if !stat }
 		end
+		true
+	end
 
+	def achieve_remote_agent_goal(agents, name, goal, id, pi, mode)
+		if agents.has_key?(name)
+			return false if agents[name]['sfpAddress'].to_s == ''
+			return false if not send_goal_to_agent(agents[name], id, goal, pi, name, mode)
+		else
+			return false if not verify_state_of_not_exist_agent(name, goal)
+		end
 		true
 	end
 
@@ -249,7 +295,7 @@ class Sfp::BSig
 
 	def lock_operator(operator)
 		@lock.synchronize {
-			operator_lock_file = "#{CacheDir}/operator.#{operator['name']}.lock"
+			operator_lock_file = "#{CacheDir}/operator.#{operator['id']}.#{operator['name']}.lock"
 			return false if File.exist?(operator_lock_file)
 			File.open(operator_lock_file, 'w') { |f| f.write('1') }
 			return true
@@ -258,7 +304,7 @@ class Sfp::BSig
 
 	def unlock_operator(operator)
 		@lock.synchronize {
-			operator_lock_file = "#{CacheDir}/operator.#{operator['name']}.lock"
+			operator_lock_file = "#{CacheDir}/operator.#{operator['id']}.#{operator['name']}.lock"
 			File.delete(operator_lock_file) if File.exist?(operator_lock_file)
 		}
 	end
@@ -354,7 +400,8 @@ class Sfp::BSig
 	# @param operators  a sorted-list of operators (sorted by 'pi')
 	# @param pi         minimum priority-index value
 	#
-	# @return           a list of applicable operators, or symbol :failed if all flaws cannot be repaired
+	# @return           a list of applicable operators, or symbol :failure if all flaws
+	#                   cannot be repaired by available operators
 	#
 	def select_operators(flaws, operators, pi)
 		selected_operator = []
@@ -372,18 +419,10 @@ class Sfp::BSig
 	end
 	
 	def select_operator(flaws, operators, pi)
-		#selected_operator = nil
 		operators.each do |op|
 			next if op['pi'] < pi
 			return op if can_repair?(op, flaws)
-			#	if selected_operator.nil?
-			#		selected_operator = op
-			#	elsif selected_operator['pi'] > op['pi']
-			#		selected_operator = op
-			#	end
-			end
 		end
-		#selected_operator
 		nil
 	end
 
@@ -410,7 +449,7 @@ class Sfp::BSig
 	end
 
 	def invoke(operator, mode)
-		Sfp::Agent.logger.info "[#{mode}] Invoking #{operator['name']}"
+		Sfp::Agent.logger.info "[#{mode}] Invoking #{operator['name']}{#{operator['parameters']}}"
 
 		begin
 			status = Sfp::Agent.execute_action(operator)
@@ -422,7 +461,7 @@ class Sfp::BSig
 				end
 			end
 		rescue Exception => e
-			Sfp::Agent.logger.error "Error in invoking operator #{operator['name']}\n#{e}\n#{e.backtrace.join("\n")}"
+			Sfp::Agent.logger.error "Error in invoking operator #{operator['name']}{#{operator['parameters']}}\n#{e}\n#{e.backtrace.join("\n")}"
 			return false
 		end
 

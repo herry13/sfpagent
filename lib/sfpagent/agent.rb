@@ -262,7 +262,11 @@ module Sfp
 					f.flock(File::LOCK_EX)
 					Sfp::Agent.logger.info "Setting the BSig model [Wait]"
 					f.rewind
-					data = (bsig.nil? ? '' : JSON.generate(bsig))
+					data = ''
+					if !bsig.nil?
+						bsig['operators'].each_index { |i| bsig['operators'][i]['id'] = i }
+						data = JSON.generate(bsig)
+					end
 					f.write(data)
 					f.flush
 					f.truncate(f.pos)
