@@ -146,7 +146,7 @@ class Sfp::BSig
 		operators.each do |operator|
 			Thread.new {
 				stat = execute_operator(operator, id, operators, mode)
-				Sfp::Agent.logger.info "[#{mode}] #{operator['name']}{#{JSON.generate(operator['parameters'])}} => #{stat}"
+				Sfp::Agent.logger.info "[#{mode}] Execute_operator: #{operator['name']}#{JSON.generate(operator['parameters'])} => #{stat}"
 				lock.synchronize { status << stat }
 			}
 		end
@@ -171,7 +171,7 @@ class Sfp::BSig
 		status = :failure
 
 		begin
-			Sfp::Agent.logger.info "[#{mode}] Selected operator: #{operator['id']}:#{operator['name']}{#{JSON.generate(operator['parameters'])}}"
+			Sfp::Agent.logger.info "[#{mode}] Selected operator: #{operator['id']}:#{operator['name']}#{JSON.generate(operator['parameters'])}"
 	
 			next_pi = operator['pi'] + 1
 			pre_local, pre_remote = split_preconditions(operator)
