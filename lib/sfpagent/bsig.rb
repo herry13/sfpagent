@@ -332,12 +332,14 @@ Sfp::Agent.logger.info "[#{mode}] flaws: #{flaws.inspect}"
 
 	def send_goal_to_agent(agent, id, goal, pi, agent_name='', mode)
 		begin
-			data = {'id' => id,
-			        'goal' => JSON.generate(goal),
-			        'pi' => pi}
-			Sfp::Agent.logger.info "[#{mode}] Request goal to #{agent_name} [WAIT]"
+			data = {
+				'id' => id,
+				'goal' => JSON.generate(goal),
+				'pi' => pi
+			}
+			Sfp::Agent.logger.info "[#{mode}] Request goal to #{agent_name}@#{agent['sfpAddress']}:#{agent['sfpPort']} [WAIT]"
 			code, _ = put_data(agent['sfpAddress'], agent['sfpPort'], SatisfierPath, data)
-			Sfp::Agent.logger.info "[#{mode}] Request goal to #{agent_name} - status: #{code}"
+			Sfp::Agent.logger.info "[#{mode}] Request goal to #{agent_name}@#{agent['sfpAddress']}:#{agent['sfpPort']} #{code}"
 			(code == '200')
 		rescue Exception => exp
 			Sfp::Agent.logger.info "[#{mode}] Request goal to #{agent_name} - error: #{exp}\n#{exp.bracktrace.join("\n")}"
