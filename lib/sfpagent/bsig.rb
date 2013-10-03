@@ -193,6 +193,8 @@ class Sfp::BSig
 				end
 				tries -= 1
 			end until tries <= 0 and @enabled
+
+			Sfp::Agent.logger.info "[#{mode}] achieve_local_goal => #{status}"
 	
 			if status != :no_flaw or
 				not achieve_remote_goal(id, pre_remote, next_pi, mode) or
