@@ -177,7 +177,7 @@ class Sfp::BSig
 			pre_local, pre_remote = split_preconditions(operator)
 	
 			# debugging
-			#Sfp::Agent.logger.info "[#{mode}] local-flaws: #{JSON.generate(pre_local)}, remote-flaws: #{JSON.generate(pre_remote)}"
+			Sfp::Agent.logger.info "[#{mode}] local-flaws: #{JSON.generate(pre_local)}, remote-flaws: #{JSON.generate(pre_remote)}"
 	
 			status = nil
 			tries = MaxTries
