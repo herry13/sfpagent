@@ -146,12 +146,12 @@ class Sfp::BSig
 		operators.each do |operator|
 			Thread.new {
 				stat = execute_operator(operator, id, operators, mode)
-				Sfp::Agent.logger.info "#{operator['name']}{#{JSON.generate(operator['parameters'])}} => #{stat}"
+				Sfp::Agent.logger.info "[#{mode}] #{operator['name']}{#{JSON.generate(operator['parameters'])}} => #{stat}"
 				operators_lock.synchronize { status << stat }
 			}
 		end
 		wait? { status.length >= operators.length }
-		Sfp::Agent.logger.info "exec status: #{status.inspect}"
+		Sfp::Agent.logger.info "[#{mode}] exec status: #{status.inspect}"
 		status.each { |stat|
 			return :failure if stat == :failure
 			return :ongoing if stat == :ongoing
@@ -168,39 +168,46 @@ class Sfp::BSig
 	def execute_operator(operator, id, operators, mode)
 		return :ongoing if not lock_operator(operator)
 
-		Sfp::Agent.logger.info "[#{mode}] Selected operator: #{operator['id']}:#{operator['name']}{#{JSON.generate(operator['parameters'])}}"
+		status = :failure
 
-		next_pi = operator['pi'] + 1
-		pre_local, pre_remote = split_preconditions(operator)
-
-		# debugging
-		#Sfp::Agent.logger.info "[#{mode}] local-flaws: #{JSON.generate(pre_local)}, remote-flaws: #{JSON.generate(pre_remote)}"
-
-		status = nil
-		tries = MaxTries
 		begin
-			status = achieve_local_goal(id, pre_local, operators, next_pi, mode)
-			if status == :no_flaw or status == :failure or not @enabled
-				break
-			elsif status == :ongoing
-				sleep SleepTime
-				tries += 1
-			elsif status == :repaired
-				tries = MaxTries
+			Sfp::Agent.logger.info "[#{mode}] Selected operator: #{operator['id']}:#{operator['name']}{#{JSON.generate(operator['parameters'])}}"
+	
+			next_pi = operator['pi'] + 1
+			pre_local, pre_remote = split_preconditions(operator)
+	
+			# debugging
+			#Sfp::Agent.logger.info "[#{mode}] local-flaws: #{JSON.generate(pre_local)}, remote-flaws: #{JSON.generate(pre_remote)}"
+	
+			status = nil
+			tries = MaxTries
+			begin
+				status = achieve_local_goal(id, pre_local, operators, next_pi, mode)
+				if status == :no_flaw or status == :failure or not @enabled
+					break
+				elsif status == :ongoing
+					sleep SleepTime
+					tries += 1
+				elsif status == :repaired
+					tries = MaxTries
+				end
+				tries -= 1
+			end until tries <= 0
+	
+			if status != :no_flaw or
+				not achieve_remote_goal(id, pre_remote, next_pi, mode) or
+				not invoke(operator, mode)
+
+				status = :failure
 			end
-			tries -= 1
-		end until tries <= 0
-
-		if status != :no_flaw or
-			not achieve_remote_goal(id, pre_remote, next_pi, mode) or
-			not invoke(operator, mode)
-
-			unlock_operator(operator) if not operator.nil?
-			return :failure
+	
+		rescue Exception => exp
+			Sfp::Agent.logger.info "[#{mode}] Execute #{operator['name']}{#{operator['parameters']}} [Error]"
+			status = :failure
 		end
-		
+
 		unlock_operator(operator) if not operator.nil?
-		:repaired
+		status
 	end
 
 	def achieve_remote_goal(id, goal, pi, mode)
@@ -212,12 +219,12 @@ class Sfp::BSig
 			agents_goal.each do |agent_name,agent_goal|
 				Thread.new {
 					stat = achieve_remote_agent_goal(agents, agent_name, agent_goal, id, pi, mode)
-					Sfp::Agent.logger.info "remote goal => #{agent_name}: #{agent_goal.inspect} - #{stat}"
+					Sfp::Agent.logger.info "[#{mode}] remote goal => #{agent_name}: #{agent_goal.inspect} - #{stat}"
 					lock.synchronize { status << stat }
 				}
 			end
 			wait? { status.length >= agents_goal.length }
-			Sfp::Agent.logger.info "achieve_remote_goal: #{status}"
+			Sfp::Agent.logger.info "[#{mode}] achieve_remote_goal: #{status}"
 			status.each { |stat| return false if !stat }
 		end
 		true
