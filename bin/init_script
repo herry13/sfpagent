@@ -11,7 +11,7 @@
 
 set -e
 
-bin="/home/herry/workspace/sfp/sfpagent/bin/sfpagent"
+bin=`which sfpagent`
 
 test -x $bin || exit 0
 
