@@ -34,6 +34,8 @@ module Sfp
 		                                     WEBrick::BasicLog::FATAL ||
 		                                     WEBrick::BasicLog::WARN)
 
+		ParentEliminator = Sfp::Visitor::ParentEliminator.new
+
 		@@current_model_hash = nil
 
 		@@bsig = nil
@@ -328,7 +330,8 @@ module Sfp
 					_, name, rest = path.split('.', 3)
 					model = get_cache_model(name)
 					if !model.nil? and model.has_key?('model')
-						return (rest.to_s.length <= 0 ? model['model'] : model['model'].at?("$.#{rest}"))
+						value = (rest.to_s.length <= 0 ? model['model'] : model['model'].at?("$.#{rest}"))
+						value.accept(ParentEliminator) if value.is_a?(Hash)
 					end
 				end
 				return value
