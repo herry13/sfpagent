@@ -1,5 +1,5 @@
 #
-# predefined methods: update_state, apply, reset, resolve
+# predefined methods: update_state, apply, reset, resolve, resolve_model, resolve_state
 #
 module Sfp::Resource
 	@@resource = Object.new.extend(Sfp::Resource)
@@ -48,6 +48,21 @@ module Sfp::Resource
 	def exec_seq(*commands)
 		commands = [commands.to_s] if not commands.is_a?(Array)
 		commands.each { |c| raise Exception, "Cannot execute: #{c}" if !system(c) }
+	end
+
+	def log
+		Sfp::Agent.logger
+	end
+
+	# copy source file to destination
+	# if source is an HTTP/HTTPS/FTP url, then use 'wget' to download the file
+	#
+	def copy(source, destination)
+		if source =~ /^(http|https|ftp):\/\/.+/
+			system "wget -O #{destination} #{source}"
+		else
+			system "cp #{source} #{destination}"
+		end
 	end
 end
 
