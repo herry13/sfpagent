@@ -133,7 +133,7 @@ class Sfp::BSig
 	def achieve_local_goal(id, goal, operators, pi, mode)
 		current = get_current_state
 		flaws = compute_flaws(goal, current)
-		Sfp::Agent.logger.info "[#{mode}] flaws: #{flaws.inspect}"
+		#Sfp::Agent.logger.info "[#{mode}] flaws: #{flaws.inspect}"
 
 		return :no_flaw if flaws.length <= 0
 		

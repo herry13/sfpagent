@@ -24,7 +24,7 @@ module Sfp::Resource
 	end
 
 	def update_model(model)
-		model.each { |k,v| @model[k] = v }
+		@model = Sfp.to_ruby(model)
 	end
 
 	def to_model
@@ -47,22 +47,11 @@ module Sfp::Resource
 	protected
 	def exec_seq(*commands)
 		commands = [commands.to_s] if not commands.is_a?(Array)
-		commands.each { |c| raise Exception, "Cannot execute: #{c}" if !system(c) }
+		commands.each { |c| raise Exception, "Error on executing '#{c}'" if !system(c) }
 	end
 
 	def log
 		Sfp::Agent.logger
-	end
-
-	# copy source file to destination
-	# if source is an HTTP/HTTPS/FTP url, then use 'wget' to download the file
-	#
-	def copy(source, destination)
-		if source =~ /^(http|https|ftp):\/\/.+/
-			system "wget -O #{destination} #{source}"
-		else
-			system "cp #{source} #{destination}"
-		end
 	end
 end
 
