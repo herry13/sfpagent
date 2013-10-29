@@ -8,7 +8,7 @@ class Sfp::BSig
 
 	SatisfierPath = '/bsig/satisfier'
 	CacheDir = (Process.euid == 0 ? '/var/sfpagent' : File.expand_path('~/.sfpagent'))
-	SatisfierLockFile = "#{CacheDir}/bsig.satisfier.lock.#{Time.now.nsec}"
+	SatisfierLockFile = "#{CacheDir}/bsig.satisfier.lock.#{Time.now.to_i}"
 
 	attr_reader :enabled, :status, :mode
 

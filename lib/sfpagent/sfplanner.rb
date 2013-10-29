@@ -58,7 +58,7 @@ class Planner
 
 	def to_image(p={})
 		def self.dot2image(dot, image_file)
-			dot_file = "/tmp/#{Time.now.getutc.to_i}.dot"
+			dot_file = "/tmp/#{Time.now.to_i}.dot"
 			File.open(dot_file, 'w') { |f|
 				f.write(dot)
 				f.flush

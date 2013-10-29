@@ -27,7 +27,7 @@ module Sfp
 
 		BSigFile = "#{CacheDir}/bsig.model"
 		BSigPIDFile = "#{CacheDir}/bsig.pid"
-		BSigThreadsLockFile = "#{CacheDir}/bsig.threads.lock.#{Time.now.nsec}"
+		BSigThreadsLockFile = "#{CacheDir}/bsig.threads.lock.#{Time.now.to_i}"
 
 		@@logger = WEBrick::Log.new(LogFile, WEBrick::BasicLog::INFO ||
 		                                     WEBrick::BasicLog::ERROR ||
