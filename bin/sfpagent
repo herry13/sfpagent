@@ -43,7 +43,7 @@ if opts[:start]
 	Sfp::Agent.start(opts)
 
 elsif opts[:stop]
-	Sfp::Agent.stop
+	Sfp::Agent.stop(opts)
 
 elsif opts[:restart]
 	opts[:daemon] = true
