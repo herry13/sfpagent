@@ -331,7 +331,7 @@ class Sfp::BSig
 		agent_goal
 	end
 
-	def send_goal_to_agent(agent, id, goal, pi, agent_name='', mode)
+	def send_goal_to_agent(agent, id, goal, pi, agent_name, mode)
 		begin
 			data = {
 				'id' => id,
