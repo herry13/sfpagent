@@ -4,10 +4,6 @@
 module Sfp::Resource
 	@@resource = Object.new.extend(Sfp::Resource)
 
-	def self.resolve(path)
-		@@resource.resolve(path)
-	end
-
 	attr_accessor :parent, :synchronized
 	attr_reader :state, :model
 
@@ -23,16 +19,25 @@ module Sfp::Resource
 		@state = {}
 	end
 
+	##############################
+	#
+	# Helper methods for resource module
+	#
+	##############################
+
+	def self.resolve(path)
+		@@resource.resolve(path)
+	end
+
+	protected
 	def update_model(model)
 		@model = Sfp.to_ruby(model)
 	end
 
-	def to_model
+	def reset
 		@state = {}
 		@model.each { |k,v| @state[k] = v }
 	end
-
-	alias_method :reset, :to_model
 
 	def resolve(path)
 		Sfp::Agent.resolve(path)
@@ -44,14 +49,25 @@ module Sfp::Resource
 		Sfp::Agent.resolve_model(path)
 	end
 
-	protected
 	def exec_seq(*commands)
 		commands = [commands.to_s] if not commands.is_a?(Array)
-		commands.each { |c| raise Exception, "Error on executing '#{c}'" if !system(c) }
+		commands.each { |c| raise Exception, "Error on executing '#{c}'" if !shell(c) }
 	end
 
 	def log
 		Sfp::Agent.logger
+	end
+
+	def shell(cmd)
+		!!system(cmd)
+	end
+
+	def copy(source, destination)
+		shell "cp -rf #{source} #{destination}"
+	end
+
+	def render(file, map)
+		::Sfp::Template.render_file(map, file)
 	end
 end
 

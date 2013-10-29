@@ -1,7 +1,7 @@
 require 'erb'
 require 'ostruct'
 
-class Sfp::TemplateEngine < OpenStruct
+class Sfp::Template < OpenStruct
 	def render(template)
 		ERB.new(template).result(binding)
 	end
@@ -15,18 +15,18 @@ class Sfp::TemplateEngine < OpenStruct
 		render_to_file(File.read(file), file)
 	end
 
-	def self.render(map, template)
-		renderer = TemplateEngine.new(map)
+	def self.render(template, map)
+		renderer = ::Sfp::Template.new(map)
 		renderer.render(template)
 	end
 
-	def self.render_to_file(map, template, file)
-		renderer = TemplateEngine.new(map)
+	def self.render_to_file(template, file, map)
+		renderer = ::Sfp::Template.new(map)
 		renderer.render_to_file(template, file)
 	end
 
-	def self.render_file(map, file)
-		renderer = TemplateEngine.new(map)
+	def self.render_file(file, map)
+		renderer = ::Sfp::Template.new(map)
 		renderer.render_file(file)
 	end
 end
