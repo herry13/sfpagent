@@ -18,7 +18,7 @@ Sfp::Agent.start(opts)
 Sfp::Agent.status
 
 ### generate agent's current state
-puts JSON.generate(Sfp::Agent.get_state)
+JSON.generate(Sfp::Agent.get_state)
 
 ### stop agent
 Sfp::Agent.stop(opts)
