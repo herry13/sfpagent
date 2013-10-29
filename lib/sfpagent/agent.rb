@@ -393,6 +393,7 @@ module Sfp
 		#
 		def self.execute_action(action)
 			logger = (@@config[:daemon] ? Sfp::Agent.logger : Logger.new(STDOUT))
+			logger.info "Executing #{action_string} [Wait]"
 			action_string = "#{action['name']} #{JSON.generate(action['parameters'])}"
 			begin
 				result = @@runtime.execute_action(action)
