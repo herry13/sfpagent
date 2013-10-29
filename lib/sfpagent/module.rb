@@ -67,7 +67,7 @@ module Sfp::Resource
 	end
 
 	def render(file, map)
-		::Sfp::Template.render_file(map, file)
+		::Sfp::Template.render_file(file, map)
 	end
 end
 

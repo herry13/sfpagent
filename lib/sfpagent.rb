@@ -14,7 +14,7 @@ libdir = File.expand_path(File.dirname(__FILE__))
 
 require libdir + '/sfpagent/helper.rb'
 require libdir + '/sfpagent/runtime.rb'
-require libdir + '/sfpagent/templateEngine.rb'
+require libdir + '/sfpagent/template.rb'
 require libdir + '/sfpagent/module.rb'
 require libdir + '/sfpagent/bsig.rb'
 require libdir + '/sfpagent/agent.rb'
