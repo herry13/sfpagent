@@ -17,7 +17,7 @@ Requirements
 ------------
 - Ruby (>= 1.8.7)
 - Ruby Gems
-	- sfp (>= 0.3.0)
+	- sfp
 
 
 To install
