@@ -22,9 +22,16 @@ Requirements
 
 To install
 ----------
+- Ruby 1.8.7
 
-	$ apt-get install ruby1.9.1 ruby1.9.1-dev libz-dev libaugeas-ruby1.9.1
-	$ gem install sfpagent
+		$ apt-get install ruby ruby-dev libz-dev libaugeas-ruby
+		$ gem install json
+		$ gem install sfpagent
+
+- Ruby 1.9.x
+
+		$ apt-get install ruby1.9.1 ruby1.9.1-dev libz-dev libaugeas-ruby1.9.1
+		$ gem install sfpagent
 
 
 As daemon
