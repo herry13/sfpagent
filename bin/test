@@ -1,0 +1,24 @@
+#!/usr/bin/env ruby
+
+require File.dirname(__FILE__) + '/../lib/sfpagent'
+
+opts = {
+	:daemon => false,
+	:port => Sfp::Agent::DefaultPort,
+	:certfile => '',
+	:keyfile => '',
+	:modules_dir => '',
+	:mock => true
+}
+
+### start agent as non-daemon process
+Sfp::Agent.start(opts)
+
+### get agent's status
+Sfp::Agent.status
+
+### generate agent's current state
+puts JSON.generate(Sfp::Agent.get_state)
+
+### stop agent
+Sfp::Agent.stop(opts)
