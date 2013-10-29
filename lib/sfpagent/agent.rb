@@ -392,10 +392,10 @@ module Sfp
 		# @param action contains the action's schema.
 		#
 		def self.execute_action(action)
-			logger = (@@config[:daemon] ? Sfp::Agent.logger : Logger.new(STDOUT))
-			logger.info "Executing #{action_string} [Wait]"
-			action_string = "#{action['name']} #{JSON.generate(action['parameters'])}"
 			begin
+				logger = (@@config[:daemon] ? Sfp::Agent.logger : Logger.new(STDOUT))
+				action_string = "#{action['name']} #{JSON.generate(action['parameters'])}"
+				logger.info "Executing #{action_string} [Wait]"
 				result = @@runtime.execute_action(action)
 				logger.info "Executing #{action_string} " + (result ? "[OK]" : "[Failed]")
 				return result

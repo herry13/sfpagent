@@ -66,8 +66,10 @@ module Sfp::Resource
 		shell "cp -rf #{source} #{destination}"
 	end
 
-	def render(file, map)
-		::Sfp::Template.render_file(file, map)
+	def render(file, map={})
+		model = @model.clone
+		map.each { |k,v| model[k] = v }
+		::Sfp::Template.render_file(file, model)
 	end
 end
 

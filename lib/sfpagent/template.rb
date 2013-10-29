@@ -16,8 +16,14 @@ class Sfp::Template < OpenStruct
 	end
 
 	def self.render(template, map)
-		renderer = ::Sfp::Template.new(map)
-		renderer.render(template)
+		if map.is_a?(Hash)
+			renderer = ::Sfp::Template.new(map)
+			renderer.render(template)
+		elsif map.is_a?(OpenStruct)
+			ERB.new(template).result(map.instance_eval { binding })
+		else
+			raise Exception, 'A Hash or OpenStruct is required!'
+		end
 	end
 
 	def self.render_to_file(template, file, map)
