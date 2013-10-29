@@ -68,45 +68,51 @@ module Sfp
 		#	:certfile => certificate file path for HTTPS
 		#	:keyfile  => key file path for HTTPS
 		#
-		def self.start(p={})
+		def self.start(opts={})
 			Sfp::Agent.logger.info "Starting SFP Agent daemons..."
 			puts "Starting SFP Agent daemons..."
 
-			Process.daemon if p[:daemon]
+			@@config = opts
+
+			Process.daemon if opts[:daemon] and not opts[:mock]
 
 			begin
 				# check modules directory, and create it if it's not exist
-				p[:modules_dir] = File.expand_path(p[:modules_dir].to_s.strip != '' ? p[:modules_dir].to_s : "#{CacheDir}/modules")
-				Dir.mkdir(p[:modules_dir], 0700) if not File.exist?(p[:modules_dir])
-				@@config = p
+				opts[:modules_dir] = File.expand_path(opts[:modules_dir].to_s.strip != '' ? opts[:modules_dir].to_s : "#{CacheDir}/modules")
+				Dir.mkdir(opts[:modules_dir], 0700) if not File.exist?(opts[:modules_dir])
 
 				# load modules from cached directory
-				load_modules(p)
+				load_modules(opts)
 
 				# reload model
 				update_model({:rebuild => true})
 
 				# create web server
 				server_type = WEBrick::SimpleServer
-				port = (p[:port] ? p[:port] : DefaultPort)
+				port = (opts[:port] ? opts[:port] : DefaultPort)
 				config = { :Host => '0.0.0.0',
 				           :Port => port,
 				           :ServerType => server_type,
 				           :pid => '/tmp/webrick.pid',
 				           :Logger => Sfp::Agent.logger }
-				if p[:ssl]
+				if opts[:ssl]
 					config[:SSLEnable] = true
 					config[:SSLVerifyClient] = OpenSSL::SSL::VERIFY_NONE
-					config[:SSLCertificate] = OpenSSL::X509::Certificate.new(File.open(p[:certfile]).read)
-					config[:SSLPrivateKey] = OpenSSL::PKey::RSA.new(File.open(p[:keyfile]).read)
+					config[:SSLCertificate] = OpenSSL::X509::Certificate.new(File.open(opts[:certfile]).read)
+					config[:SSLPrivateKey] = OpenSSL::PKey::RSA.new(File.open(opts[:keyfile]).read)
 					config[:SSLCertName] = [["CN", WEBrick::Utils::getservername]]
 				end
 				server = WEBrick::HTTPServer.new(config)
 				server.mount("/", Sfp::Agent::Handler, Sfp::Agent.logger)
 
+				# create maintenance object
+				maintenance = Maintenance.new(opts)
+
 				# trap signal
 				['INT', 'KILL', 'HUP'].each { |signal|
 					trap(signal) {
+						maintenance.stop
+
 						Sfp::Agent.logger.info "Shutting down web server and BSig engine..."
 						bsig_engine.stop
 						loop do
@@ -121,7 +127,9 @@ module Sfp
 
 				bsig_engine.start
 
-				server.start
+				maintenance.start
+
+				server.start if not opts[:mock]
 
 			rescue Exception => e
 				Sfp::Agent.logger.error "Starting the agent [Failed] #{e}\n#{e.backtrace.join("\n")}"
@@ -131,23 +139,26 @@ module Sfp
 
 		# Stop the agent's daemon.
 		#
-		def self.stop
+		def self.stop(opts={})
 			begin
 				pid = File.read(PIDFile).to_i
 				puts "Stopping SFP Agent with PID #{pid}..."
 				Process.kill 'HUP', pid
 
-				begin
-					sleep (Sfp::BSig::SleepTime + 0.25)
-					Process.kill 0, pid
-					Sfp::Agent.logger.info "SFP Agent daemon is still running."
-					puts "SFP Agent daemon is still running."
-					return false
-				rescue
-					Sfp::Agent.logger.info "SFP Agent daemon has stopped."
-					puts "SFP Agent daemon has stopped."
-					File.delete(PIDFile) if File.exist?(PIDFile)
+				if not opts[:mock]
+					begin
+						sleep (Sfp::BSig::SleepTime + 0.25)
+						Process.kill 0, pid
+						Sfp::Agent.logger.info "SFP Agent daemon is still running."
+						puts "SFP Agent daemon is still running."
+						return false
+					rescue
+						Sfp::Agent.logger.info "SFP Agent daemon has stopped."
+						puts "SFP Agent daemon has stopped."
+						File.delete(PIDFile) if File.exist?(PIDFile)
+					end
 				end
+
 			rescue
 				puts "SFP Agent is not running."
 				File.delete(PIDFile) if File.exist?(PIDFile)
@@ -614,6 +625,24 @@ module Sfp
 			                            (Time.new - modified_time) < 60
 			@@agents_database_modified_time = File.mtime(AgentsDataFile)
 			@@agents_database = JSON[File.read(AgentsDataFile)]
+		end
+
+		class Maintenance
+			IntervalTime = 600 # 10 minutes
+
+			def initialize(opts={})
+				@opts = opts
+			end
+
+			def start
+				return if not defined?(@@enabled) or @@enabled
+				@@enabled = true
+				# TODO
+			end
+
+			def stop
+				@@enabled = false
+			end
 		end
 
 		# A class that handles HTTP request.

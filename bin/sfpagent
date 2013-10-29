@@ -1,10 +1,13 @@
 #!/usr/bin/env ruby
 
-dir = File.expand_path(File.dirname(__FILE__))
-require "#{dir}/../lib/sfpagent"
+require File.dirname(__FILE__) + '/../lib/sfpagent'
+
+def version?
+	File.read(File.dirname(__FILE__) + '/../VERSION').strip
+end
 
 opts = Trollop::options do
-	version "sfpagent " + File.read("#{dir}/../VERSION").sub(/\n/, '') + " (c) 2013 Herry"
+	version "sfpagent #{version?} (c) 2013 Herry"
 	banner <<-EOS
 SFP Agent that provides a Ruby framework for managing system configurations. The configurations are modelled in SFP language.
 
@@ -19,10 +22,6 @@ EOS
 	opt :restart, "Restart the daemon agent.", :short => '-r'
 	opt :status, "Print the status of the daemon agent.", :short => '-a'
 	opt :port, "Port number of the daemon agent should listen to.", :short => '-p', :default => Sfp::Agent::DefaultPort
-	#opt :state, "Given a model, print the state of all modules. (Note: [model-file] should be specified.)"
-	#opt :execute, "Given a model, execute a plan in given file. (Note: [model-file] should be specified.)"
-	#opt :pretty, "Print the result in a pretty JSON format.", :short => '-r'
-	#opt :daemon, "Start the agent as a daemon.", :default => true
 	opt :ssl, "Set the agent to use HTTPS instead of HTTP.", :default => false
 	opt :certfile, "Certificate file for HTTPS.", :default => ''
 	opt :keyfile, "Private key file for HTTPS.", :default => ''

@@ -17,4 +17,6 @@ Gem::Specification.new do |s|
 	s.rubyforge_project = 'sfpagent'
 
 	s.add_dependency 'sfp', '~> 0.3.16'
+
+	s.add_development_dependency 'rake'
 end	
