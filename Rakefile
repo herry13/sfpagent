@@ -1,13 +1,13 @@
 def name
-        @name ||= Dir['*.gemspec'].first.split('.').first
+	@name ||= Dir['*.gemspec'].first.split('.').first
 end
 
 def version
-        File.read('VERSION').strip
+	File.read('VERSION').strip
 end
 
 def date
-        Date.today.to_s
+	Date.today.to_s
 end
 
 def test_script

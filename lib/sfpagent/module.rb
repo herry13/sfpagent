@@ -8,11 +8,9 @@ module Sfp::Resource
 	attr_reader :state, :model
 
 	def init(model={})
-		@model = {}
 		@state = {}
+		@model = (model.length <= 0 ? {} : Sfp.to_ruby(model))
 		@synchronized = []
-
-		update_model(model)
 	end
 
 	def update_state
@@ -30,28 +28,19 @@ module Sfp::Resource
 	end
 
 	protected
-	def update_model(model)
-		@model = Sfp.to_ruby(model)
-	end
-
-	def reset
+	def to_model
 		@state = {}
 		@model.each { |k,v| @state[k] = v }
 	end
 
-	def resolve(path)
+	def resolve_state(path)
 		Sfp::Agent.resolve(path)
 	end
 
-	alias_method :resolve_state, :resolve
+	alias_method :resolve, :resolve_state
 
 	def resolve_model(path)
 		Sfp::Agent.resolve_model(path)
-	end
-
-	def exec_seq(*commands)
-		commands = [commands.to_s] if not commands.is_a?(Array)
-		commands.each { |c| raise Exception, "Error on executing '#{c}'" if !shell(c) }
 	end
 
 	def log
@@ -66,7 +55,13 @@ module Sfp::Resource
 		shell "cp -rf #{source} #{destination}"
 	end
 
-	def render(file, map={})
+	def render(string, map={})
+		model = @model.clone
+		map.each { |k,v| model[k] = v }
+		::Sfp::Template.render_file(file, model)
+	end
+
+	def render_file(file, map={})
 		model = @model.clone
 		map.each { |k,v| model[k] = v }
 		::Sfp::Template.render_file(file, model)

@@ -2,19 +2,39 @@ require 'erb'
 require 'ostruct'
 
 class Sfp::Template < OpenStruct
+	def initialize(resolver=nil)
+		@resolver = resolver
+	end
+
+	def resolve(path)
+		(@resolver.nil? ? nil : @resolver.resolve(path))
+	end
+
+	# Render given template string, and then return the result
+	# @template   template string to be rendered
+	#
 	def render(template)
 		ERB.new(template).result(binding)
 	end
 
-	def render_to_file(template, file)
-		result = render(template)
-		File.open(file, 'w+') { |f| f.write(result) }
-	end
-
+	# Render given file, and then save the result back to the file
+	# @file   target file that will be rendered
+	#
 	def render_file(file)
-		render_to_file(File.read(file), file)
+		File.open(file, File::RDWR|File::CREAT) do |f|
+			f.flock(File::LOCK_EX)
+			result = render(f.read)
+			f.rewind
+			f.write(result)
+			f.flush
+			f.truncate(f.pos)
+		end
 	end
 
+	# Render given template string, and then return the result
+	# @template   template string to be rendered
+	# @map        a Hash of accessible variables in the template
+	#
 	def self.render(template, map)
 		if map.is_a?(Hash)
 			renderer = ::Sfp::Template.new(map)
@@ -26,11 +46,10 @@ class Sfp::Template < OpenStruct
 		end
 	end
 
-	def self.render_to_file(template, file, map)
-		renderer = ::Sfp::Template.new(map)
-		renderer.render_to_file(template, file)
-	end
-
+	# Render given file, and then save the result back to the file
+	# @file   target file to be rendered
+	# @map    a Hash of accessible variables in the template
+	#
 	def self.render_file(file, map)
 		renderer = ::Sfp::Template.new(map)
 		renderer.render_file(file)

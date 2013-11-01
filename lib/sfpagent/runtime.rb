@@ -97,12 +97,12 @@ class Sfp::Runtime
 
 	def update_model(model, root, path)
 		object = {}
-		if model['_context'] == 'object' and model['_isa'].to_s.isref and model['_isa'].to_s != '$.Object'
+		if model['_context'] == 'object' and model['_isa'].to_s.isref #and model['_isa'].to_s != '$.Object'
 			object[:_self] = instantiate_sfp_object(model, root)
 		end
 
 		model.each do |key,child|
-			if key[0,1] != '_' and child.is_a?(Hash) and child['_context'] == 'object' and child['_isa'].to_s != '$.Object'
+			if key[0,1] != '_' and child.is_a?(Hash) and child['_context'] == 'object' #and child['_isa'].to_s != '$.Object'
 				object[key] = update_model(child, root, path.push(key))
 			end
 		end
