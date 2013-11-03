@@ -69,8 +69,8 @@ module Sfp
 		#	:keyfile  => key file path for HTTPS
 		#
 		def self.start(opts={})
-			Sfp::Agent.logger.info "Starting SFP Agent daemons..."
-			puts "Starting SFP Agent daemons..."
+			Sfp::Agent.logger.info "Starting agent..."
+			puts "Starting agent..."
 
 			@@config = opts
 
@@ -133,6 +133,7 @@ module Sfp
 
 			rescue Exception => e
 				Sfp::Agent.logger.error "Starting the agent [Failed] #{e}\n#{e.backtrace.join("\n")}"
+
 				raise e
 			end
 		end
@@ -142,7 +143,7 @@ module Sfp
 		def self.stop(opts={})
 			begin
 				pid = File.read(PIDFile).to_i
-				puts "Stopping SFP Agent with PID #{pid}..."
+				puts "Stopping agent with PID #{pid}..."
 				Process.kill 'HUP', pid
 
 				if not opts[:mock]
@@ -150,39 +151,41 @@ module Sfp
 						sleep (Sfp::BSig::SleepTime + 0.25)
 
 						Process.kill 0, pid
-						Sfp::Agent.logger.info "SFP Agent daemon is still running."
-						puts "SFP Agent daemon is still running."
+						Sfp::Agent.logger.info "Agent is still running."
+						puts "Agent is still running."
 
-						Sfp::Agent.logger.info "Killing SFP Agent daemon."
-						puts "Killing SFP Agent daemon."
+						Sfp::Agent.logger.info "Killing agent."
+						puts "Killing agent."
 						Process.kill 9, pid
-
-						return false
 					rescue
-						Sfp::Agent.logger.info "SFP Agent daemon has stopped."
-						puts "SFP Agent daemon has stopped."
+						Sfp::Agent.logger.info "Agent has stopped."
+						puts "Agent has stopped."
 						File.delete(PIDFile) if File.exist?(PIDFile)
 					end
 				end
 
 			rescue
-				puts "SFP Agent is not running."
+				puts "Agent is not running."
 				File.delete(PIDFile) if File.exist?(PIDFile)
 			end
-
-			true
 		end
 
-		# Print the status of the agent.
-		#
-		def self.status
+		def self.pid
 			begin
 				pid = File.read(PIDFile).to_i
-				Process.kill 0, pid
-				puts "SFP Agent is running with PID #{pid}"
+				return pid if Process.kill 0, pid
 			rescue
-				puts "SFP Agent is not running."
-				File.delete(PIDFile) if File.exist?(PIDFile)
+			end
+			nil
+		end
+
+		# Return agent's PID if it is running, otherwise nil.
+		#
+		def self.status
+			if pid.nil?
+				puts "Agent is not running."
+			else
+				puts "Agent is running with PID #{pid}"
 			end
 		end
 

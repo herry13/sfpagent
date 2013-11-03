@@ -39,8 +39,12 @@ model_file = ARGV[0].to_s
 plan_file = ARGV[1].to_s
 
 if opts[:start]
-	opts[:daemon] = true
-	Sfp::Agent.start(opts)
+	if not Sfp::Agent.pid.nil?
+		puts "Agent is already running with PID #{Sfp::Agent.pid}"
+	else
+		opts[:daemon] = true
+		Sfp::Agent.start(opts)
+	end
 
 elsif opts[:stop]
 	Sfp::Agent.stop(opts)
