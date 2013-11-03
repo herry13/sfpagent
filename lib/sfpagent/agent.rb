@@ -148,9 +148,15 @@ module Sfp
 				if not opts[:mock]
 					begin
 						sleep (Sfp::BSig::SleepTime + 0.25)
+
 						Process.kill 0, pid
 						Sfp::Agent.logger.info "SFP Agent daemon is still running."
 						puts "SFP Agent daemon is still running."
+
+						Sfp::Agent.logger.info "Killing SFP Agent daemon."
+						puts "Killing SFP Agent daemon."
+						Process.kill 9, pid
+
 						return false
 					rescue
 						Sfp::Agent.logger.info "SFP Agent daemon has stopped."
