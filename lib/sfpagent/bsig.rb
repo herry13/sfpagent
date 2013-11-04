@@ -7,7 +7,7 @@ class Sfp::BSig
 	MaxTries = 5
 
 	SatisfierPath = '/bsig/satisfier'
-	CacheDir = (Process.euid == 0 ? '/var/sfpagent' : File.expand_path('~/.sfpagent'))
+	CacheDir = (Process.euid == 0 ? '/var/sfpagent' : File.expand_path(Dir.home + '/.sfpagent'))
 	SatisfierLockFile = "#{CacheDir}/bsig.satisfier.lock.#{Time.now.to_i}"
 
 	attr_reader :enabled, :status, :mode
