@@ -58,7 +58,7 @@ module Sfp::Resource
 	def render(string, map={})
 		model = @model.clone
 		map.each { |k,v| model[k] = v }
-		::Sfp::Template.render(file, model)
+		::Sfp::Template.render(string, model)
 	end
 
 	def render_file(file, map={})
