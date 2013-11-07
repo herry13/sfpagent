@@ -66,6 +66,37 @@ module Sfp::Resource
 		map.each { |k,v| model[k] = v }
 		::Sfp::Template.render_file(file, model)
 	end
+
+	def download(source, destination)
+		def use_http_proxy?(uri)
+			ENV['no_proxy'].to_s.split(',').each { |pattern|
+				pattern.chop! if pattern[-1] == '*'
+				return false if uri.hist[0, pattern.length] == pattern
+			}
+			true
+		end
+
+		file = nil
+		begin
+			uri = URI.parse(source)
+			http = nil
+			if use_http_proxy?(uri)
+				proxy = URI.parse(ENV['http_proxy'])
+				http = Net::HTTP::Proxy(proxy.host, proxy.port).new(uri.host, uri.port)
+			else
+				http = Net::HTTP.new(uri.host, uri.port)
+			end
+			http.request_get(uri.path) do |response|
+				file = ::File.open(destination, 'wb')
+				response.read_body do |segment|
+					file.write segment
+				end
+				file.flush
+			end
+		ensure
+			file.close if not file.nil?
+		end
+	end
 end
 
 module Sfp::Module
