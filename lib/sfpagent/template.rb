@@ -2,14 +2,6 @@ require 'erb'
 require 'ostruct'
 
 class Sfp::Template < OpenStruct
-	def initialize(resolver=nil)
-		@resolver = resolver
-	end
-
-	def resolve(path)
-		(@resolver.nil? ? nil : @resolver.resolve(path))
-	end
-
 	# Render given template string, and then return the result
 	# @template   template string to be rendered
 	#
