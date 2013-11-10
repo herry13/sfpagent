@@ -111,7 +111,7 @@ class Sfp::Runtime
 	def update_model(model, root, path)
 		object = {}
 		if model['_context'] == 'object' and model['_isa'].to_s.isref #and model['_isa'].to_s != '$.Object'
-			object[:_self] = instantiate_sfp_object(model, root)
+			object[:_self] = instantiate_sfp_object(model, path)
 		end
 
 		model.each do |key,child|
@@ -130,7 +130,7 @@ class Sfp::Runtime
 		false
 	end
 	
-	def instantiate_sfp_object(model, root)
+	def instantiate_sfp_object(model, path)
 		### get SFP schema's name
 		schema = model['_isa'].sub(/^\$\./, '')
 		object = nil
@@ -160,7 +160,10 @@ class Sfp::Runtime
 			next if k[0,1] == '_' or not (v.is_a?(Hash) and v['_context'] == 'procedure')
 			object.synchronized << k if v['_synchronized']
 		}
-	
+
+		# set object's path
+		object.path = path
+
 		object
 	end
 

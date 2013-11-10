@@ -176,7 +176,8 @@ class Sfp::Module::Shell
 	def update_state
 		@state = invoke({
 			:command => :state,
-			:model => @model
+			:model => @model,
+			:path => @path
 		})
 	end
 
@@ -185,7 +186,8 @@ class Sfp::Module::Shell
 			:command => :execute,
 			:procedure => name.split('.').last,
 			:parameters => parameters,
-			:model => @model
+			:model => @model,
+			:path => @path
 		})
 		if result['status'] != 'ok'
 			log.error "Error in executing #{name} - description: #{result['description']}"
