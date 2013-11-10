@@ -414,31 +414,51 @@ module Sfp
 			false
 		end
 
-		# Load all modules in given directory.
+		###############
+		#
+		# Load all modules in given agent's module directory.
 		#
 		# options:
-		#	:dir => directory that holds all modules
+		#	:dir => directory that contains all modules
 		#
+		###############
 		def self.load_modules(p={})
 			dir = p[:modules_dir]
 
-			@@modules = []
+			@@modules = {}
 			counter = 0
-			if dir != '' and File.exist?(dir)
+			if dir != '' and File.directory?(dir)
 				Sfp::Agent.logger.info "Modules directory: #{dir}"
-				Dir.entries(dir).each { |name|
-					next if name == '.' or name == '..' or File.file?("#{dir}/#{name}")
-					module_file = "#{dir}/#{name}/#{name}.rb"
-					next if not File.exist?(module_file)
-					begin
-						load module_file # use 'load' than 'require'
-						Sfp::Agent.logger.info "Loading module #{dir}/#{name} [OK]"
+				Dir.entries(dir).each do |name|
+					module_dir = "#{dir}/#{name}"
+					next if name == '.' or name == '..' or not File.directory?(module_dir)
+					module_file = "#{module_dir}/#{name}.rb"
+					if File.exist?(module_file)
+						begin
+							### use 'load' than 'require' to rewrite previous definitions
+							load module_file
+							Sfp::Agent.logger.info "Loading module #{module_dir} [OK]"
+							counter += 1
+							@@modules[name] = {
+								:type => :ruby,
+								:home => module_dir,
+								:hash => get_module_hash(name)
+							}
+						rescue Exception => e
+							Sfp::Agent.logger.warn "Loading module #{dir}/#{name} [Failed]\n#{e}"
+						end
+					elsif File.exist?("#{module_dir}/main")
+						Sfp::Agent.logger.info "Loading module #{module_dir} [OK]"
+						@@modules[name] = {
+							:type => :shell,
+							:home => module_dir,
+							:hash => get_module_hash(name)
+						}
 						counter += 1
-						@@modules << name
-					rescue Exception => e
-						Sfp::Agent.logger.warn "Loading module #{dir}/#{name} [Failed]\n#{e}"
+					else
+						logger.warn "Module #{module_dir} is invalid."
 					end
-				}
+				end
 			end
 			Sfp::Agent.logger.info "Successfully loading #{counter} modules."
 		end
@@ -467,27 +487,11 @@ module Sfp
 		end
 
 		def self.get_modules
-			return [] if not (defined? @@modules and @@modules.is_a? Array)
-			data = {}
-			@@modules.each { |m| data[m] = get_module_hash(m) }
-			data
-		end
-
-		# Push a list of modules to an agent using a script in $SFPAGENT_HOME/bin/install_module.
-		#
-		# parameters:
-		#   :address => address of target agent
-		#   :port    => port of target agent
-		#   :modules => an array of modules' name that will be pushed
-		#
-		def self.push_modules(p={})
-			fail "Incomplete parameters." if !p[:modules] or !p[:address] or !p[:port]
-
-			install_module = File.expand_path('../../../bin/install_module', __FILE__)
-			modules = p[:modules].join(' ')
-			cmd = "cd #{@@config[:modules_dir]}; #{install_module} #{p[:address]} #{p[:port]} #{modules}"
-			result = `#{cmd}`
-			(result =~ /status: ok/)
+			#return [] if not (defined? @@modules and @@modules.is_a?(Hash))
+			#data = {}
+			#@@modules.each_key { |m| data[m] = get_module_hash(m) }
+			#data
+			(defined?(@@modules) ? @@modules : {})
 		end
 
 		def self.uninstall_all_modules(p={})
@@ -662,14 +666,14 @@ module Sfp
 				@logger = logger
 			end
 
-			# Process HTTP Get request
+			# Process HTTP GET request
 			#
 			# uri:
-			#	/pid      => save daemon's PID to a file (only requested from localhost)
-			#	/state    => return the current state
-			#	/model    => return the current model
-			#	/sfp      => return the SFP description of a module
-			#	/modules  => return a list of available modules
+			#  /pid      => save daemon's PID to a file (only requested from localhost)
+			#  /state    => return the current state
+			#  /model    => return the current model
+			#  /sfp      => return the SFP description of a module
+			#  /modules  => return a list of available modules
 			#  /agents   => return a list of agents database
 			#  /log      => return last 100 lines of log file
 			#
@@ -708,7 +712,9 @@ module Sfp
 						status, content_type, body = get_sfp({:module => path[10, path.length-10]})
 
 					elsif path == '/modules'
-						status, content_type, body = [200, 'application/json', JSON.generate(Sfp::Agent.get_modules)]
+						mods = {}
+						Sfp::Agent.get_modules.each { |name,data| mods[name] = data[:hash] }
+						status, content_type, body = [200, 'application/json', JSON.generate(mods)]
 
 					elsif path == '/agents'
 						status, content_type, body = [200, 'application/JSON', JSON.generate(Sfp::Agent.get_agents)]
@@ -724,7 +730,7 @@ module Sfp
 				response.body = body
 			end
 
-			# Handle HTTP Post request
+			# Handle HTTP POST request
 			#
 			# uri:
 			#	/execute => receive an action's schema and execute it
@@ -746,16 +752,16 @@ module Sfp
 				response.body = body
 			end
 
-			# Handle HTTP Put request
+			# Handle HTTP PUT request
 			#
 			# uri:
-			#	/model          => receive a new model and then save it
+			#  /model          => receive a new model and then save it
 			#  /model/cache    => receive a "cache" model and then save it
-			#	/modules        => save the module if parameter "module" is provided
-			#	/agents         => save the agents' list if parameter "agents" is provided
+			#  /modules        => save the module if parameter "module" is provided
+			#  /agents         => save the agents' list if parameter "agents" is provided
 			#  /bsig           => receive BSig model and receive it in cached directory
 			#  /bsig/satisfier => receive goal request from other agents and then start
-			#                     a satisfier thread to try to achieve it
+			#                     a satisfier thread in order to achieve it
 			#
 			def do_PUT(request, response)
 				status = 400
@@ -800,15 +806,15 @@ module Sfp
 				response.body = body
 			end
 
-			# Handle HTTP Delete request
+			# Handle HTTP DELETE request
 			#
 			# uri:
-			#	/model            => delete existing model
+			#  /model            => delete existing model
 			#  /model/cache      => delete all cache models
 			#  /model/cache/name => delete cache model of agent "name"
-			#	/modules          => delete all modules from module database
-			#	/modules/name     => delete module "name" from module database
-			#	/agents           => delete all agents from agent database
+			#  /modules          => delete all modules from module database
+			#  /modules/name     => delete module "name" from module database
+			#  /agents           => delete all agents from agent database
 			#  /agents/name      => delete "name" from agent database
 			#  /bsig             => delete existing BSig model
 			#

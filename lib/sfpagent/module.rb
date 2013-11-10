@@ -1,10 +1,26 @@
+require 'yaml'
+require 'shellwords'
+
+
+###############
 #
-# predefined methods: update_state, apply, reset, resolve, resolve_model, resolve_state
+# predefined methods:
+# - init
+# - update_state
+# - to_model
+# - resolve
+# - resolve_state
+# - resolve_model
+# - log
+# - copy
+# - render
+# - render_file
 #
+###############
 module Sfp::Resource
 	@@resource = Object.new.extend(Sfp::Resource)
 
-	attr_accessor :parent, :synchronized
+	attr_accessor :parent, :synchronized, :path
 	attr_reader :state, :model
 
 	def init(model={})
@@ -69,4 +85,49 @@ module Sfp::Resource
 end
 
 module Sfp::Module
+end
+
+class Sfp::Module::Shell
+	include Sfp::Resource
+
+	attr_reader :home, :main
+
+	def initialize(metadata)
+		### set module's home directory
+		@home = metadata[:home]
+
+		### set main shell command
+		@main = @home + '/main'
+	end
+
+	def update_state
+		@state = invoke({
+			:command => :state,
+			:model => @model
+		})
+	end
+
+	def execute(name, parameters={})
+		name = name.split('.').last
+		result = invoke({
+			:command => :execute,
+			:procedure => name,
+			:parameters => parameters,
+			:model => @model
+		})
+		(result['status'] == 'ok')
+	end
+
+	private
+
+	def invoke(parameters)
+		log.info Shellwords.shellescape(JSON.generate(parameters))
+		begin
+			output = `#{@main} #{Shellwords.shellescape(JSON.generate(parameters))}`
+			JSON.parse(output)
+		rescue Exception => exp
+			log.info "Invalid module output: #{output}"
+			raise exp
+		end
+	end
 end

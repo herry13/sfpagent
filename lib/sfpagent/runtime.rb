@@ -110,28 +110,44 @@ class Sfp::Runtime
 		object
 	end
 
+	def shell_module?(schema)
+		Sfp::Agent.get_modules.each do |name,data|
+			return true if schema == name and data[:type] == :shell
+		end
+		false
+	end
+	
 	def instantiate_sfp_object(model, root)
-		# get SFP schema name
-		schema_name = model['_isa'].sub(/^\$\./, '')
+		### get SFP schema's name
+		schema = model['_isa'].sub(/^\$\./, '')
+		object = nil
 
-		# throw an exception if schema's implementation is not exist!
-		raise Exception, "Implementation of schema #{schema_name} is not available!" if
-			not Sfp::Module.const_defined?(schema_name)
+		if schema[0] =~ /[A-Z]/ and Sfp::Module.const_defined?(schema)
+			### create an instance of the schema
+			object = Sfp::Module::const_get(schema).new
 
-		# create an instance of the schema
-		object = Sfp::Module::const_get(schema_name).new
+		elsif shell_module?(schema)
+			### get module's metadata
+			metadata = Sfp::Agent.get_modules[schema]
+
+			### create module wrapper instance
+			object = Sfp::Module::Shell.new(metadata)
+
+		else
+			# throw an exception if schema's implementation is not exist!
+			raise Exception, "Implementation of schema #{schema} is not available!"
+
+		end
 
 		# initialize the instance
-		object_model = model.select { |k,v| k[0,1] != '_' and
-			not (v.is_a?(Hash) and v['_context'] == 'procedure') }
 		object.init(model)
-		
+			
 		# update list of synchronized procedures
 		model.each { |k,v|
 			next if k[0,1] == '_' or not (v.is_a?(Hash) and v['_context'] == 'procedure')
 			object.synchronized << k if v['_synchronized']
 		}
-
+	
 		object
 	end
 
