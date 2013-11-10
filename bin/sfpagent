@@ -26,6 +26,7 @@ EOS
 	opt :certfile, "Certificate file for HTTPS.", :default => ''
 	opt :keyfile, "Private key file for HTTPS.", :default => ''
 	opt :modules_dir, "A directory that holds all SFP modules.", :default => ''
+	opt :resolve, "get current state of given reference", :default => ''
 end
 
 def parse(filepath)
@@ -79,6 +80,15 @@ elsif opts[:execute]
 	runtime = Sfp::Runtime.new(parse(model_file))
 	runtime.get_state
 	puts (runtime.execute_plan(File.read(plan_file)) ? "Success!" : "Failed!")
+
+elsif opts[:resolve].to_s.strip.length > 0
+	path = opts[:resolve].to_s.strip.sub(/^\$\./, '').gsub(/\./, '/')
+	path = "/state/" + path
+	http = Object.new.extend(Sfp::Helper::Net)
+	code, state = http.get_data('localhost', Sfp::Agent::DefaultPort, path)
+	if code == '200'
+		puts state
+	end
 
 else
 	Trollop::help
