@@ -27,14 +27,27 @@ class Sfp::Runtime
 
 		module_path, method_name = action['name'].pop_ref
 		mod = @root.at?(module_path)[:_self]
-		raise Exception, "Module #{module_path} cannot be found!" if mod.nil?
-		raise Exception, "Cannot execute #{action['name']}!" if not mod.respond_to?(method_name)
 
-		params = normalise_parameters(action['parameters'])
-		if mod.synchronized.rindex(method_name)
-			@mutex_procedure.synchronize { mod.send method_name.to_sym, params }
+		if mod.nil?
+			raise Exception, "Module #{module_path} cannot be found!"
+
+		elsif mod.is_a?(Sfp::Module::Shell)
+			params = normalise_parameters(action['parameters'])
+			mod.execute method_name, params
+
+		elsif not mod.respond_to?(method_name)
+			raise Exception, "Cannot execute #{action['name']}!"
+
 		else
-			mod.send method_name.to_sym, params
+			params = normalise_parameters(action['parameters'])
+			if mod.synchronized.rindex(method_name)
+				@mutex_procedure.synchronize {
+					mod.send method_name.to_sym, params
+				}
+			else
+				mod.send method_name.to_sym, params
+			end
+
 		end
 
 		# TODO - check post-execution state for verification

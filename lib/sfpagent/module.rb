@@ -1,20 +1,65 @@
 require 'yaml'
 require 'shellwords'
 
+module Sfp::Module
+end
 
 ###############
 #
-# predefined methods:
-# - init
-# - update_state
-# - to_model
-# - resolve
-# - resolve_state
-# - resolve_model
-# - log
-# - copy
-# - render
-# - render_file
+# Module Sfp::Resource must be included by every module. It provides
+# standard methods which are used by Runtime engine in mapping between
+# SFP object and schema implementation.
+#
+# accessible attributes
+# - parent        : holds instance of parent's object
+#
+# - synchronized  : an list of SFP procedures that must be executed in
+#                   serial
+#
+# - path          : an absolute path of this instance
+#
+# read-only attributes
+# - state         : holds the current state of this module instance
+#
+# - model         : holds the model of desired state of this module
+#                   instance
+#
+# methods:
+# - init          : invoked by Runtime engine after instantiating this
+#                   module instance for initialization
+#
+# - update_state  : invoked by Runtime engine to request this module
+#                   instance to update the current state which should
+#                   be kept in attribute @state
+#
+# - to_model      : can be invoked by this module instance to set the
+#                   current state equals the desired state (model), or
+#                   in short: @state == @model
+#
+# - resolve_state : can be invoked by this module to resolve given
+#                   reference of current state either local or other
+#                   module instances
+#
+# - resolve       : an alias to method resolve_state
+#
+# - resolve_model : can be invoked by this module to resolve given
+#                   reference of desired state (model) either local or
+#                   other module instances
+#
+# - log           : return logger object
+#
+# - copy          : copy a file, whose path is the first parameter, to
+#                   a destination path given in the second parameter
+#
+# - render        : render given template file, whose path is the first
+#                   parameter, and the template's variable is a merged
+#                   between a Hash in the second parameter with model;
+#                   the result is returned as a string
+#
+# - render_file   : render given template file, whose path is the first
+#                   parameter, and the template's variable is a merged
+#                   between a Hash on the second parameter with model;
+#                   the result is written back to the file
 #
 ###############
 module Sfp::Resource
@@ -115,9 +160,6 @@ module Sfp::Resource
 	end
 end
 
-module Sfp::Module
-end
-
 class Sfp::Module::Shell
 	include Sfp::Resource
 
@@ -139,14 +181,18 @@ class Sfp::Module::Shell
 	end
 
 	def execute(name, parameters={})
-		name = name.split('.').last
 		result = invoke({
 			:command => :execute,
-			:procedure => name,
+			:procedure => name.split('.').last,
 			:parameters => parameters,
 			:model => @model
 		})
-		(result['status'] == 'ok')
+		if result['status'] != 'ok'
+			log.error "Error in executing #{name} - description: #{result['description']}"
+			false
+		else
+			true
+		end
 	end
 
 	private
