@@ -13,7 +13,7 @@ module Sfp
 	module Agent
 		NetHelper = Object.new.extend(Sfp::Helper::Net)
 
-		Home = (Process.euid == 0 and File.directory?('/var') ? '/var/sfpagent' : File.expand_path(Dir.home + '/.sfpagent'))
+		Home = ((Process.euid == 0 and File.directory?('/var')) ? '/var/sfpagent' : File.expand_path(Dir.home + '/.sfpagent'))
 		Dir.mkdir(Home, 0700) if not File.exist?(Home)
 
 		DefaultPort = 1314
