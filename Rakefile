@@ -11,7 +11,7 @@ def date
 end
 
 def test_script
-	File.dirname(__FILE__) + '/bin/test'
+	"ruby " + File.dirname(__FILE__) + '/bin/test'
 end
 
 task :default => :test
