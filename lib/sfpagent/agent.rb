@@ -108,7 +108,7 @@ module Sfp
 				# create maintenance object
 				maintenance = Maintenance.new(opts)
 
-				if opts[:daemon]
+				if not is_windows
 					# trap signal
 					['INT', 'KILL', 'HUP'].each do |signal|
 						trap(signal) {
@@ -199,6 +199,10 @@ module Sfp
 			nil
 		end
 
+		def self.is_windows
+			(RbConfig::CONFIG['host_os'] =~ /mswin|mingw|cygwin/)
+		end
+		
 		def self.set_cache_model(p={})
 			File.open(CacheModelFile, File::RDWR|File::CREAT, 0600) do |f|
 				f.flock(File::LOCK_EX)
