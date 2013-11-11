@@ -13,21 +13,21 @@ module Sfp
 	module Agent
 		NetHelper = Object.new.extend(Sfp::Helper::Net)
 
-		CacheDir = (Process.euid == 0 ? '/var/sfpagent' : File.expand_path(Dir.home + '/.sfpagent'))
-		Dir.mkdir(CacheDir, 0700) if not File.exist?(CacheDir)
+		Home = (Process.euid == 0 ? '/var/sfpagent' : File.expand_path(Dir.home + '/.sfpagent'))
+		Dir.mkdir(Home, 0700) if not File.exist?(Home)
 
 		DefaultPort = 1314
 
-		PIDFile = "#{CacheDir}/sfpagent.pid"
-		LogFile = "#{CacheDir}/sfpagent.log"
-		ModelFile = "#{CacheDir}/sfpagent.model"
-		AgentsDataFile = "#{CacheDir}/sfpagent.agents"
+		PIDFile = "#{Home}/sfpagent.pid"
+		LogFile = "#{Home}/sfpagent.log"
+		ModelFile = "#{Home}/sfpagent.model"
+		AgentsDataFile = "#{Home}/sfpagent.agents"
 
-		CacheModelFile = "#{CacheDir}/cache.model"
+		CacheModelFile = "#{Home}/cache.model"
 
-		BSigFile = "#{CacheDir}/bsig.model"
-		BSigPIDFile = "#{CacheDir}/bsig.pid"
-		BSigThreadsLockFile = "#{CacheDir}/bsig.threads.lock.#{Time.now.to_i}"
+		BSigFile = "#{Home}/bsig.model"
+		BSigPIDFile = "#{Home}/bsig.pid"
+		BSigThreadsLockFile = "#{Home}/bsig.threads.lock.#{Time.now.to_i}"
 
 		@@logger = WEBrick::Log.new(LogFile, WEBrick::BasicLog::INFO ||
 		                                     WEBrick::BasicLog::ERROR ||
@@ -78,7 +78,7 @@ module Sfp
 
 			begin
 				# check modules directory, and create it if it's not exist
-				opts[:modules_dir] = File.expand_path(opts[:modules_dir].to_s.strip != '' ? opts[:modules_dir].to_s : "#{CacheDir}/modules")
+				opts[:modules_dir] = File.expand_path(opts[:modules_dir].to_s.strip != '' ? opts[:modules_dir].to_s : "#{Home}/modules")
 				Dir.mkdir(opts[:modules_dir], 0700) if not File.exist?(opts[:modules_dir])
 
 				# load modules from cached directory

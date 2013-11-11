@@ -7,8 +7,8 @@ class Sfp::BSig
 	MaxTries = 5
 
 	SatisfierPath = '/bsig/satisfier'
-	CacheDir = (Process.euid == 0 ? '/var/sfpagent' : File.expand_path(Dir.home + '/.sfpagent'))
-	SatisfierLockFile = "#{CacheDir}/bsig.satisfier.lock.#{Time.now.to_i}"
+	Home = (Process.euid == 0 ? '/var/sfpagent' : File.expand_path(Dir.home + '/.sfpagent'))
+	SatisfierLockFile = "#{Home}/bsig.satisfier.lock.#{Time.now.to_i}"
 
 	attr_reader :enabled, :status, :mode
 
@@ -33,7 +33,7 @@ class Sfp::BSig
 		Thread.new {
 			register_satisfier_thread(:reset)
 	
-			system("rm -f #{CacheDir}/operator.*.lock")
+			system("rm -f #{Home}/operator.*.lock")
 	
 			Sfp::Agent.logger.info "[main] BSig engine is running."
 	
@@ -307,7 +307,7 @@ class Sfp::BSig
 
 	def lock_operator(operator)
 		@lock.synchronize {
-			operator_lock_file = "#{CacheDir}/operator.#{operator['id']}.#{operator['name']}.lock"
+			operator_lock_file = "#{Home}/operator.#{operator['id']}.#{operator['name']}.lock"
 			return false if File.exist?(operator_lock_file)
 			File.open(operator_lock_file, 'w') { |f| f.write('1') }
 			return true
@@ -316,7 +316,7 @@ class Sfp::BSig
 
 	def unlock_operator(operator)
 		@lock.synchronize {
-			operator_lock_file = "#{CacheDir}/operator.#{operator['id']}.#{operator['name']}.lock"
+			operator_lock_file = "#{Home}/operator.#{operator['id']}.#{operator['name']}.lock"
 			File.delete(operator_lock_file) if File.exist?(operator_lock_file)
 		}
 	end
