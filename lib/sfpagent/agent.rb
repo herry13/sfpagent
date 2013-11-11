@@ -13,7 +13,7 @@ module Sfp
 	module Agent
 		NetHelper = Object.new.extend(Sfp::Helper::Net)
 
-		Home = (Process.euid == 0 ? '/var/sfpagent' : File.expand_path(Dir.home + '/.sfpagent'))
+		Home = (Process.euid == 0 and File.directory?('/var') ? '/var/sfpagent' : File.expand_path(Dir.home + '/.sfpagent'))
 		Dir.mkdir(Home, 0700) if not File.exist?(Home)
 
 		DefaultPort = 1314
@@ -108,20 +108,22 @@ module Sfp
 				# create maintenance object
 				maintenance = Maintenance.new(opts)
 
-				# trap signal
-				['INT', 'KILL', 'HUP'].each { |signal|
-					trap(signal) {
-						maintenance.stop
+				if opts[:daemon]
+					# trap signal
+					['INT', 'KILL', 'HUP'].each do |signal|
+						trap(signal) {
+							maintenance.stop
 
-						Sfp::Agent.logger.info "Shutting down web server and BSig engine..."
-						bsig_engine.stop
-						loop do
-							break if bsig_engine.status == :stopped
-							sleep 1
-						end
-						server.shutdown
-					}
-				}
+							Sfp::Agent.logger.info "Shutting down web server and BSig engine..."
+							bsig_engine.stop
+							loop do
+								break if bsig_engine.status == :stopped
+								sleep 1
+							end
+							server.shutdown
+						}
+					end
+				end
 
 				File.open(PIDFile, 'w', 0644) { |f| f.write($$.to_s) }
 
