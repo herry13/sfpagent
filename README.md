@@ -15,19 +15,19 @@ Every software component could have a set of methods which could be called throu
 
 Requirements
 ------------
-- Ruby (>= 1.8.7)
+- Ruby (>= 1.9.2)
 - Ruby Gems
 	- sfp
 
 
+Tested On
+---------
+- Ruby: 1.9.2, 1.9.3, 2.0.0, JRuby-19mode
+- OS: Ubuntu, Debian, MacOS X
+
+
 To install
 ----------
-- Ruby 1.8.7
-
-		$ apt-get install ruby ruby-dev libz-dev libaugeas-ruby
-		$ gem install json
-		$ gem install sfpagent
-
 - Ruby 1.9.x
 
 		$ apt-get install ruby1.9.1 ruby1.9.1-dev libz-dev libaugeas-ruby1.9.1
@@ -47,32 +47,47 @@ As daemon
 		$ sfpagent -t
 
 
-Cached Directory
+Home Directory
 ----------------
-Cached directory keeps all agent's local data such as:
+Home directory keeps all agent's local data such as:
 - log file
 - PID file
 - model file
 - installed modules
 
-In default, the agent will use (and created if not exist) the following directory as _cached directory_:
-- **~/.sfpagent**, when the daemon is running with non-root user,
-- **/var/sfpagent**, when the daemon is running with root user.
+In default, the agent will use (and created if not exist) the following directory as _home directory_:
+- **~/.sfpagent**, when the daemon is running with non-root user
+- **/var/sfpagent**, when the daemon is running with root user
 
 
 HTTP RESTful API
 ----------------
 - GET
-	- /state : return the state of the agent
-	- /model : return the model of the agent
-	- /modules : return the list of modules
-	- /log : return the last 100 lines of the log file
+	- /pid      : save daemon's PID to a file (only requested from localhost)
+	- /state    : return the current state
+	- /model    : return the current model
+	- /sfp      : return the SFP description of a module
+	- /modules  : return a list of available modules
+	- /agents   : return a list of agents database
+	- /log      : return last 100 lines of log file
 
-- POST
-	- /execute : execute an action as specified in "action" parameter
+- POST	
+	- /execute : receive an action's schema and execute it
 
 - PUT
-	- /model : set/replace the model with given model as specified in "model" parameter
-	- /module : set/replace the module if "module" parameter is specified, or delete the module if the parameter is not exist
+	- /model          : receive a new model and then save it
+	- /model/cache    : receive a "cache" model and then save it
+	- /modules        : save the module if parameter "module" is provided
+	- /agents         : save the agents' list if parameter "agents" is provided
+	- /bsig           : receive BSig model and receive it in cached directory
+	- /bsig/satisfier : receive goal request from other agents and then start a satisfier thread in order to achieve it
 
-
+- DELETE
+	- /model            : delete existing model
+	- /model/cache      : delete all cache models
+	- /model/cache/name : delete cache model of agent "name"
+	- /modules          : delete all modules from module database
+	- /modules/name     : delete module "name" from module database
+	- /agents           : delete all agents from agent database
+	- /agents/name      : delete "name" from agent database
+	- /bsig             : delete existing BSig model
