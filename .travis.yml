@@ -25,5 +25,5 @@ matrix:
     - rvm: jruby-19mode
       gemfile: Gemfile.1.8.7
 
-notification:
+notifications:
   - email: false
