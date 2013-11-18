@@ -132,7 +132,7 @@ module Sfp::Resource
 		def use_http_proxy?(uri)
 			ENV['no_proxy'].to_s.split(',').each { |pattern|
 				pattern.chop! if pattern[-1] == '*'
-				return false if uri.hist[0, pattern.length] == pattern
+				return false if uri.host[0, pattern.length] == pattern
 			}
 			true
 		end
@@ -203,6 +203,7 @@ class Sfp::Module::Shell
 		log.info Shellwords.shellescape(JSON.generate(parameters))
 		begin
 			output = `#{@main} #{Shellwords.shellescape(JSON.generate(parameters))}`
+			log.info output
 			JSON.parse(output)
 		rescue Exception => exp
 			log.info "Invalid module output: #{output}"
