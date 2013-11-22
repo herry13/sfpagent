@@ -12,8 +12,15 @@
 set -e
 
 bin=`which sfpagent`
+if [ $bin = "" ]; then
+	if [ -f "/usr/bin/sfpagent" ]; then
+		bin="/usr/bin/sfpagent"
+	elif [ -f "/usr/local/bin/sfpagent" ]; then
+		bin="/usr/local/bin/sfpagent"
+	fi
+fi
 
-test -x $bin || exit 0
+test -x $bin || exit 1
 
 umask 022
 
