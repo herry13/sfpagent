@@ -17,6 +17,7 @@ class Sfp::BSig
 		@enabled = false
 		@status = :stopped
 		@lock_postprocess = Mutex.new
+		@locked_operators = []
 	end
 
 	def stop
@@ -53,6 +54,7 @@ class Sfp::BSig
 		Sfp::Agent.logger.info "[main] Executing BSig model"
 
 		previous_exec_status = exec_status = nil
+
 		while @enabled
 			begin
 	
@@ -131,6 +133,10 @@ class Sfp::BSig
 	#   :repaired => some goal-flaws have been repaired, but the goal may have other flaws
 	#
 	def achieve_local_goal(id, goal, operators, pi, mode)
+		parallel_achieve_local_goal(id, goal, operators, pi, mode)
+	end
+
+	def parallel_achieve_local_goal(id, goal, operators, pi, mode)
 		current = get_current_state
 		flaws = compute_flaws(goal, current)
 		#Sfp::Agent.logger.info "[#{mode}] flaws: #{flaws.inspect}"
@@ -282,7 +288,6 @@ class Sfp::BSig
 		unregister_satisfier_thread
 	end
 
-	#protected
 	def register_satisfier_thread(mode=nil)
 		File.open(SatisfierLockFile, File::RDWR|File::CREAT, 0644) { |f|
 			f.flock(File::LOCK_EX)
@@ -305,19 +310,31 @@ class Sfp::BSig
 		}
 	end
 
+	# lock given operator by creating a lock file to avoid another thread
+	# executing the same operator
+	#
+	# @param operator   operator to be locked
+	#
 	def lock_operator(operator)
 		@lock.synchronize {
 			operator_lock_file = "#{Home}/operator.#{operator['id']}.#{operator['name']}.lock"
 			return false if File.exist?(operator_lock_file)
 			File.open(operator_lock_file, 'w') { |f| f.write('1') }
+			@locked_operators << operator
 			return true
 		}
 	end
 
+	# unlock given operator by deleting lock file in order to allow another thread
+	# executing the operator
+	#
+	# @param operator   operator to be unlocked
+	#
 	def unlock_operator(operator)
 		@lock.synchronize {
 			operator_lock_file = "#{Home}/operator.#{operator['id']}.#{operator['name']}.lock"
 			File.delete(operator_lock_file) if File.exist?(operator_lock_file)
+			@lock_operators.delete(operator)
 		}
 	end
 
@@ -419,20 +436,28 @@ class Sfp::BSig
 	#                   cannot be repaired by available operators
 	#
 	def select_operators(flaws, operators, pi)
-		selected_operator = []
+		selected_operators = []
 		repaired = {}
 		operators.each do |op|
 			next if op['pi'] < pi
-			if can_repair?(op, flaws)
-				selected_operator << op
+			if can_repair?(op, flaws) and                # can the operator repair the flaws?
+			   not threat?(op, selected_operators) and   # does the operator threat other selected operators?
+			   not threat?(op, @locked_operators)        # does the operator threat locked (being executed) operators?
+				selected_operators << op
 				op['effect'].each { |var,val| repaired[var] = val if flaws[var] == val }
 			end
 			break if repaired.length >= flaws.length
 		end
 		return :failure if repaired.length < flaws.length
-		selected_operator
+		selected_operators
 	end
-	
+
+	# @param flaws       a map of flaws (variable-value) that should be repaired
+	# @param operators   a sorted-list of operators (sorted by 'pi')
+	# @param pi          minimum priority-index value
+	#
+	# @return            an operator that can repair the flaws
+	#	
 	def select_operator(flaws, operators, pi)
 		operators.each do |op|
 			next if op['pi'] < pi
@@ -441,8 +466,33 @@ class Sfp::BSig
 		nil
 	end
 
+	# An operator can repair the flaws iff there is an effect that fixes the flaw
+	#
 	def can_repair?(operator, flaws)
 		operator['effect'].each { |variable,value| return true if flaws[variable] == value }
+		false
+	end
+
+	# Check if an operator threats a set of operators.
+	#
+	# @param operator   operator to be checked
+	# @param operators  a set of operators
+	#
+	def threat_operators?(operator, operators)
+		operators.each do |op|
+			return true if threat?(operator, op)
+		end
+		false
+	end
+
+	# Return true if operator1 threats operator2: there is an effect's variable of operator1
+	# is in condition's or effect's variable of operator2
+	#
+	def threat?(operator1, operator2)
+		operator1['effect'].each_key do |variable1|
+			return true if operator2['condition'].keys.include?(variable1) or
+			               operator2['effect'].keys.include?(variable1)
+		end
 		false
 	end
 
