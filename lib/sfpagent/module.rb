@@ -142,8 +142,13 @@ module Sfp::Resource
 			uri = URI.parse(source)
 			http = nil
 			if use_http_proxy?(uri)
-				proxy = URI.parse(ENV['http_proxy'])
-				http = Net::HTTP::Proxy(proxy.host, proxy.port).new(uri.host, uri.port)
+				begin
+					proxy = URI.parse(ENV['http_proxy'])
+					http = Net::HTTP::Proxy(proxy.host, proxy.port).new(uri.host, uri.port)
+				rescue Exception => e
+					log.info "Invalid http_proxy=#{ENV['http_proxy']}"
+					http = Net::HTTP.new(uri.host, uri.port)
+				end
 			else
 				http = Net::HTTP.new(uri.host, uri.port)
 			end
