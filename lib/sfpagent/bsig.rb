@@ -35,6 +35,7 @@ class Sfp::BSig
 			register_satisfier_thread(:reset)
 	
 			system("rm -f #{Home}/operator.*.lock")
+			system("rm -f #{Home}/bsig.satisfier.lock.*")
 	
 			Sfp::Agent.logger.info "[main] BSig engine is running."
 	
