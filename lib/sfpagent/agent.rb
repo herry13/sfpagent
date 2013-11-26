@@ -1,6 +1,6 @@
 require 'rubygems'
 require 'webrick'
-require 'webrick/https'
+#require 'webrick/https'
 require 'openssl'
 require 'thread'
 require 'uri'
@@ -8,6 +8,8 @@ require 'net/http'
 require 'logger'
 require 'json'
 require 'digest/md5'
+require 'rack'
+require 'thin'
 
 module Sfp
 	module Agent
@@ -29,10 +31,11 @@ module Sfp
 		BSigPIDFile = "#{Home}/bsig.pid"
 		BSigThreadsLockFile = "#{Home}/bsig.threads.lock.#{Time.now.to_i}"
 
-		@@logger = WEBrick::Log.new(LogFile, WEBrick::BasicLog::INFO ||
-		                                     WEBrick::BasicLog::ERROR ||
-		                                     WEBrick::BasicLog::FATAL ||
-		                                     WEBrick::BasicLog::WARN)
+		#@@logger = WEBrick::Log.new(LogFile, WEBrick::BasicLog::INFO ||
+		#                                     WEBrick::BasicLog::ERROR ||
+		#                                     WEBrick::BasicLog::FATAL ||
+		#                                     WEBrick::BasicLog::WARN)
+		@@logger = Logger.new(LogFile)
 
 		ParentEliminator = Sfp::Visitor::ParentEliminator.new
 
@@ -87,6 +90,7 @@ module Sfp
 				# reload model
 				update_model({:rebuild => true})
 
+=begin
 				# create web server
 				server_type = WEBrick::SimpleServer
 				port = (opts[:port] ? opts[:port] : DefaultPort)
@@ -104,6 +108,15 @@ module Sfp
 				end
 				server = WEBrick::HTTPServer.new(config)
 				server.mount("/", Sfp::Agent::Handler, Sfp::Agent.logger)
+=end
+				port = (opts[:port] ? opts[:port] : DefaultPort)
+				config = {
+					:Host => '0.0.0.0',
+					:Port => port,
+					:pid => '/tmp/sfpagent.pid',
+					:logger => Sfp::Agent.logger
+				}
+				#server = This::Server.new #(config) #Sfp::Agent::RackHandler, config)
 
 				# create maintenance object
 				maintenance = Maintenance.new(opts)
@@ -120,7 +133,8 @@ module Sfp
 								break if bsig_engine.status == :stopped
 								sleep 1
 							end
-							server.shutdown
+							#server.shutdown
+							#server.stop! if server.running?
 						}
 					end
 				end
@@ -131,7 +145,12 @@ module Sfp
 
 				maintenance.start
 
-				server.start if not opts[:mock]
+				#server.start if not opts[:mock]
+
+				#Thin::Logging.logger(Sfp::Agent.logger)
+				Rack::Handler::Thin.run RackHandler, config
+				#server = Thin::Server.start config, RackHandler
+				
 
 			rescue Exception => e
 				Sfp::Agent.logger.error "Starting the agent [Failed] #{e}\n#{e.backtrace.join("\n")}"
@@ -665,6 +684,31 @@ module Sfp
 			end
 		end
 
+		class RackHandler
+			def self.trusted(request)
+				true
+			end
+
+			def self.call(env)
+				@@handler = Handler.new(nil, Sfp::Agent.logger) if not defined?(@@handler)
+				request = Rack::Request.new(env)
+				remote_address = env['REMOTE_ADDR']
+
+				if request.get?
+					@@handler.do_GET(request, remote_address)
+				elsif request.post?
+					@@handler.do_POST(request, remote_address)
+				elsif request.put?
+					@@handler.do_PUT(request, remote_address)
+				elsif request.delete?
+					@@handler.do_DELETE(request, remote_address)
+				else
+					response.code = 404
+					[404, {"Content-Type" => "text/plain"}, '']
+				end
+			end
+		end
+
 		# A class that handles HTTP request.
 		#
 		class Handler < WEBrick::HTTPServlet::AbstractServlet
@@ -683,14 +727,15 @@ module Sfp
 			#  /agents   => return a list of agents database
 			#  /log      => return last 100 lines of log file
 			#
-			def do_GET(request, response)
+			def do_GET(request, remote_address=nil)
 				status = 400
 				content_type = body = ''
-				if not trusted(request)
+				if not trusted(remote_address)
 					status = 403
 				else
 					path = (request.path[-1,1] == '/' ? request.path.chop : request.path)
-					if path == '/pid' and (request.peeraddr[2] == 'localhost' or request.peeraddr[3] == '127.0.0.1')
+
+					if path == '/pid' and (remote_address == 'localhost' or remote_address == '127.0.0.1')
 						status, content_type, body = save_pid
 
 					elsif path == '/state'
@@ -731,9 +776,8 @@ module Sfp
 					end
 				end
 
-				response.status = status
-				response['Content-Type'] = content_type
-				response.body = body
+				content_type = 'text/plain' if content_type.to_s.length == 0
+				[status, {'Content-Type' => content_type}, body]
 			end
 
 			# Handle HTTP POST request
@@ -741,21 +785,22 @@ module Sfp
 			# uri:
 			#	/execute => receive an action's schema and execute it
 			#
-			def do_POST(request, response)
+			def do_POST(request, remote_address)
 				status = 400
 				content_type, body = ''
-				if not self.trusted(request)
+				if not trusted(remote_address)
 					status = 403
 				else
-					path = (request.path[-1,1] == '/' ? ryyequest.path.chop : request.path)
+					path = (request.path[-1,1] == '/' ? request.path.chop : request.path)
+					data = request.params
+
 					if path == '/execute'
-						status, content_type, body = self.execute({:query => request.query})
+						status, content_type, body = execute({:query => data})
 					end
 				end
 
-				response.status = status
-				response['Content-Type'] = content_type
-				response.body = body
+				content_type = 'text/plain' if content_type.to_s.length == 0
+				[status, {'Content-Type' => content_type}, body]
 			end
 
 			# Handle HTTP PUT request
@@ -769,47 +814,47 @@ module Sfp
 			#  /bsig/satisfier => receive goal request from other agents and then start
 			#                     a satisfier thread in order to achieve it
 			#
-			def do_PUT(request, response)
+			def do_PUT(request, remote_address)
 				status = 400
 				content_type = body = ''
-				if not self.trusted(request)
+				if not trusted(remote_address)
 					status = 403
 				else
-					path = (request.path[-1,1] == '/' ? ryyequest.path.chop : request.path)
+					path = (request.path[-1,1] == '/' ? request.path.chop : request.path)
+					data = request.params
 
-					if path == '/model' and request.query.has_key?('model')
-						status, content_type, body = self.set_model({:model => request.query['model']})
+					if path == '/model' and data['model']
+						status, content_type, body = self.set_model({:model => data['model']})
 
-					elsif path =~ /\/model\/cache\/.+/ and request.query.length > 0
+					elsif path =~ /\/model\/cache\/.+/ and data.length > 0
 						status, content_type, body = self.manage_cache_model({:set => true,
 						                                                      :name => path[13, path.length-13],
-						                                                      :model => request.query['model']})
+						                                                      :model => data['model']})
 
-					elsif path =~ /\/modules\/.+/ and request.query.length > 0
+					elsif path =~ /\/modules\/.+/ and data['module']
 						status, content_type, body = self.manage_modules({:install => true,
 						                                                  :name => path[9, path.length-9],
-						                                                  :module => request.query['module']})
+						                                                  :module => data['module']})
 
-					elsif path == '/modules' and request.query.length > 0
+					elsif path == '/modules' and data
 						status, content_type, body = self.manage_modules({:install => true,
-						                                                  :modules => request.query})
+						                                                  :modules => data})
 
-					elsif path == '/agents' and request.query.has_key?('agents')
+					elsif path == '/agents' and data['agents']
 						status, content_type, body = self.manage_agents({:set => true,
-						                                                 :agents => request.query['agents']})
+						                                                 :agents => data['agents']})
 
-					elsif path == '/bsig' and request.query.has_key?('bsig')
-						status, content_type, body = self.set_bsig({:query => request.query})
+					elsif path == '/bsig' and data['bsig']
+						status, content_type, body = self.set_bsig({:query => data})
 
 					elsif path == '/bsig/satisfier'
-						status, content_type, body = self.satisfy_bsig_request({:query => request.query})
+						status, content_type, body = self.satisfy_bsig_request({:query => data})
 
 					end
 				end
 
-				response.status = status
-				response['Content-Type'] = content_type
-				response.body = body
+				content_type = 'text/plain' if content_type.to_s.length == 0
+				[status, {'Content-Type' => content_type}, body]
 			end
 
 			# Handle HTTP DELETE request
@@ -824,13 +869,13 @@ module Sfp
 			#  /agents/name      => delete "name" from agent database
 			#  /bsig             => delete existing BSig model
 			#
-			def do_DELETE(request, response)
+			def do_DELETE(request, remote_address)
 				status = 400
 				content_type = body = ''
-				if not self.trusted(request)
+				if not trusted(remote_address)
 					status = 403
 				else
-					path = (request.path[-1,1] == '/' ? ryyequest.path.chop : request.path)
+					path = (request.path[-1,1] == '/' ? request.path.chop : request.path)
 
 					if path == '/model'
 						status, content_type, body = self.set_model
@@ -856,6 +901,9 @@ module Sfp
 					end
 
 				end
+
+				content_type = 'text/plain' if content_type.to_s.length == 0
+				[status, {'Content-Type' => content_type}, body]
 			end
 
 			def manage_agents(p={})
@@ -1029,7 +1077,7 @@ module Sfp
 				[500, '', '']
 			end
 
-			def trusted(request)
+			def trusted(remote_address)
 				true
 			end
 
