@@ -1,5 +1,5 @@
 require 'rubygems'
-require 'webrick'
+#require 'webrick'
 #require 'webrick/https'
 require 'openssl'
 require 'thread'
@@ -711,7 +711,7 @@ module Sfp
 
 		# A class that handles HTTP request.
 		#
-		class Handler < WEBrick::HTTPServlet::AbstractServlet
+		class Handler #< WEBrick::HTTPServlet::AbstractServlet
 			def initialize(server, logger)
 				@logger = logger
 			end
