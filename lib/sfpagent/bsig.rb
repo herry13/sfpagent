@@ -144,19 +144,17 @@ class Sfp::BSig
 	def parallel_achieve_local_goal(id, goal, operators, pi, mode)
 		current = get_current_state
 		flaws = compute_flaws(goal, current)
-		#Sfp::Agent.logger.info "[#{mode}] flaws: #{flaws.inspect}"
 
 		return :no_flaw if flaws.length <= 0
 		
-		operators = select_operators(flaws, operators, pi)
-		return :failure if operators == :failure
+		selected_operators = select_operators(flaws, operators, pi)
+		return :failure if selected_operators == :failure
 		
-		Sfp::Agent.logger.info "total operators: #{operators.length}"
+		Sfp::Agent.logger.info "total operators: #{selected_operators.length}"
 
-		total = operators.length
 		status = []
 		lock = Mutex.new
-		operators.each do |operator|
+		selected_operators.each do |operator|
 			Thread.new {
 				begin
 					stat = execute_operator(operator, id, operators, mode)
@@ -168,7 +166,7 @@ class Sfp::BSig
 				lock.synchronize { status << stat }
 			}
 		end
-		wait? { status.length >= operators.length }
+		wait? { (status.length >= selected_operators.length) }
 		Sfp::Agent.logger.info "[#{mode}] exec status: #{status.inspect}"
 		status.each { |stat|
 			return :failure if stat == :failure
@@ -460,7 +458,10 @@ class Sfp::BSig
 			end
 			break if repaired.length >= flaws.length
 		end
-		return :failure if repaired.length < flaws.length
+		if selected_operators.length <= 0 #repaired.length < flaws.length
+			Sfp::Agent.logger.error "No flaws can be repaired - pi=#{pi}\nflaws: #{flaws.inspect}"
+			return :failure
+		end
 		selected_operators
 	end
 
