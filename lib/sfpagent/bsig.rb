@@ -17,7 +17,6 @@ class Sfp::BSig
 		@enabled = false
 		@status = :stopped
 		@lock_postprocess = Mutex.new
-		@locked_operators = []
 	end
 
 	def stop
@@ -321,7 +320,6 @@ class Sfp::BSig
 			operator_lock_file = "#{Home}/operator.#{operator['id']}.#{operator['name']}.lock"
 			return false if File.exist?(operator_lock_file)
 			File.open(operator_lock_file, 'w') { |f| f.write('1') }
-			@locked_operators << operator
 			return true
 		}
 	end
@@ -441,9 +439,8 @@ class Sfp::BSig
 		repaired = {}
 		operators.each do |op|
 			next if op['pi'] < pi
-			if can_repair?(op, flaws) and                # can the operator repair the flaws?
-			   not threat?(op, selected_operators) and   # does the operator threat other selected operators?
-			   not threat?(op, @locked_operators)        # does the operator threat locked (being executed) operators?
+			if can_repair?(op, flaws) and                     # can the operator repair the flaws?
+			   not threat_operators?(op, selected_operators)  # does the operator threat other selected operators?
 				selected_operators << op
 				op['effect'].each { |var,val| repaired[var] = val if flaws[var] == val }
 			end
