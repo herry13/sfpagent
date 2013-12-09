@@ -91,6 +91,16 @@ class Sfp::BSig
 		end
 	end
 
+	def get_flaws
+		bsig = Sfp::Agent.get_bsig
+		if bsig.nil?
+			{}
+		else
+			current = get_current_state
+			compute_flaws(bsig['goal'], current)
+		end
+	end
+
 	def wait_for_satisfier?
 		total_satisfier = 1
 		loop do
@@ -271,7 +281,7 @@ class Sfp::BSig
 		true
 	end
 
-	def receive_goal_from_agent(id, goal, pi)
+	def receive_goal_from_agent(id, goal, pi, client='')
 		register_satisfier_thread
 
 		return false if not @enabled
@@ -283,7 +293,7 @@ class Sfp::BSig
 		status = nil
 		tries = MaxTries
 		begin
-			status = achieve_local_goal(bsig['id'], goal, bsig['operators'], pi, :satisfier)
+			status = achieve_local_goal(bsig['id'], goal, bsig['operators'], pi, "satisfier[#{client}]")
 			if status == :no_flaw or status == :failure or not @enabled
 				break
 			elsif status == :pending

@@ -676,13 +676,16 @@ module Sfp
 			# Process HTTP GET request
 			#
 			# uri:
-			#  /pid      => save daemon's PID to a file (only requested from localhost)
-			#  /state    => return the current state
-			#  /model    => return the current model
-			#  /sfp      => return the SFP description of a module
-			#  /modules  => return a list of available modules
-			#  /agents   => return a list of agents database
-			#  /log      => return last 100 lines of log file
+			#  /pid          => save daemon's PID to a file (only requested from localhost)
+			#  /state        => return the current state
+			#  /model        => return the current model
+			#  /model/cache  => return the cached model
+			#  /sfp          => return the SFP description of a module
+			#  /modules      => return a list of available modules
+			#  /agents       => return a list of agents database
+			#  /log          => return last 100 lines of log file
+			#  /bsig         => return BSig model
+			#  /bsig/flaws   => return flaws of BSig model
 			#
 			def do_GET(request, response)
 				status = 400
@@ -713,7 +716,12 @@ module Sfp
 						status, content_type, body = self.get_cache_model({:name => path[13, path.length-13]})
 
 					elsif path == '/bsig'
-						status, content_Type, body = get_bsig
+						status, content_type, body = get_bsig
+
+					elsif path == '/bsig/flaws'
+						status = 200
+						content_type = 'application/json'
+						body = JSON.generate(Sfp::Agent.bsig_engine.get_flaws)
 
 					elsif path =~ /^\/sfp\/.+/
 						status, content_type, body = get_sfp({:module => path[10, path.length-10]})
@@ -803,7 +811,7 @@ module Sfp
 						status, content_type, body = self.set_bsig({:query => request.query})
 
 					elsif path == '/bsig/satisfier'
-						status, content_type, body = self.satisfy_bsig_request({:query => request.query})
+						status, content_type, body = self.satisfy_bsig_request({:query => request.query, :client => request.remote_ip})
 
 					end
 				end
@@ -1025,7 +1033,7 @@ module Sfp
 				return [500, '', ''] if Sfp::Agent.bsig_engine.nil?
 
 				req = p[:query]
-				return [200, '', ''] if Sfp::Agent.bsig_engine.receive_goal_from_agent(req['id'].to_i, JSON[req['goal']], req['pi'].to_i)
+				return [200, '', ''] if Sfp::Agent.bsig_engine.receive_goal_from_agent(req['id'].to_i, JSON[req['goal']], req['pi'].to_i, p[:client])
 
 				[500, '', '']
 			end
