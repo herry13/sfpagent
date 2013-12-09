@@ -31,21 +31,26 @@ class Sfp::BSig
 		}
 
 		Thread.new {
-			register_satisfier_thread(:reset)
+			begin
+				register_satisfier_thread(:reset)
 	
-			system("rm -f #{Home}/operator.*.lock")
-			system("rm -f #{Home}/bsig.satisfier.lock.*")
+				system("rm -f #{Home}/operator.*.lock")
+				system("rm -f #{Home}/bsig.satisfier.lock.*")
 	
-			Sfp::Agent.logger.info "[main] BSig engine is running."
+				Sfp::Agent.logger.info "[main] BSig engine is running."
 	
-			puts "BSig Engine is running with PID #{$$}"
-			File.open(Sfp::Agent::BSigPIDFile, 'w') { |f| f.write($$.to_s) }
+				puts "BSig Engine is running with PID #{$$}"
+				File.open(Sfp::Agent::BSigPIDFile, 'w') { |f| f.write($$.to_s) }
 	
-			self.execute_model
+				self.execute_model
 	
-			File.delete(SatisfierLockFile) if File.exist?(SatisfierLockFile)
-			Sfp::Agent.logger.info "[main] BSig engine has stopped."
+				File.delete(SatisfierLockFile) if File.exist?(SatisfierLockFile)
+				Sfp::Agent.logger.info "[main] BSig engine has stopped."
 
+			rescue Exception => exp
+				Sfp::Agent.logger.error "Cannot start BSig engine => #{exp}\n#{exp.backtrace.join("\n")}"
+			end
+			
 			@status = :stopped
 		}
 	end
@@ -153,8 +158,13 @@ class Sfp::BSig
 		lock = Mutex.new
 		operators.each do |operator|
 			Thread.new {
-				stat = execute_operator(operator, id, operators, mode)
-				Sfp::Agent.logger.info "[#{mode}] Execute_operator: #{operator['name']}#{JSON.generate(operator['parameters'])} => #{stat}"
+				begin
+					stat = execute_operator(operator, id, operators, mode)
+					Sfp::Agent.logger.info "[#{mode}] Execute_operator: #{operator['name']}#{JSON.generate(operator['parameters'])} => #{stat}"
+				rescue Exception => exp
+					stat = :failure
+					Sfp::Agent.logger.error "[#{mode}] Execute_operator: #{operator['name']}#{JSON.generate(operator['parameters'])} => #{stat} - #{exp}\n#{exp.backtrace.join("\n")}"
+				end
 				lock.synchronize { status << stat }
 			}
 		end
@@ -228,8 +238,13 @@ class Sfp::BSig
 			agents_goal = split_goal_by_agent(goal)
 			agents_goal.each do |agent_name,agent_goal|
 				Thread.new {
-					stat = achieve_remote_agent_goal(agents, agent_name, agent_goal, id, pi, mode)
-					Sfp::Agent.logger.info "[#{mode}] remote goal => #{agent_name}: #{agent_goal.inspect} - #{stat}"
+					begin
+						stat = achieve_remote_agent_goal(agents, agent_name, agent_goal, id, pi, mode)
+						Sfp::Agent.logger.info "[#{mode}] remote goal => #{agent_name}: #{agent_goal.inspect} - #{stat}"
+					rescue Exception => exp
+						stat = false
+						Sfp::Agent.logger.error "[#{mode}] remote goal => #{agent_name}: #{agent_goal.inspect} - #{stat} - #{exp}\n#{exp.backtrace.join("\n")}"
+					end
 					lock.synchronize { status << stat }
 				}
 			end
@@ -333,7 +348,6 @@ class Sfp::BSig
 		@lock.synchronize {
 			operator_lock_file = "#{Home}/operator.#{operator['id']}.#{operator['name']}.lock"
 			File.delete(operator_lock_file) if File.exist?(operator_lock_file)
-			@lock_operators.delete(operator)
 		}
 	end
 
@@ -374,7 +388,7 @@ class Sfp::BSig
 			ref = "#{cloud_ref}.vms"
 			vms = state.at?(ref)
 			vms.each { |name,status| vms[name] = {'created' => true} } if vms.is_a?(Hash)
-		}
+		} if Sfp::Agent.runtime
 		if not vms.has_key?(agent_name)
 			state = {agent_name => {'created' => false, 'in_cloud' => nil}}
 			goal.each { |var,val| return false if state.at?(var) != val }
@@ -400,7 +414,7 @@ class Sfp::BSig
 					                'sfpPort' => Sfp::Agent::DefaultPort }
 				}
 			end
-		}
+		} if Sfp::Agent.runtime
 
 		state
 	end
@@ -533,7 +547,7 @@ class Sfp::BSig
 
 	def postprocess_delete_vm(operator)
 		@lock_postprocess.synchronize {
-			_, agent_name, _ = operator['name'].split('.', 3)
+			_, agent_name, _ = operator['parameters']['$.vm'].split('.', 3)
 
 			Sfp::Agent.logger.info "Postprocess delete VM #{agent_name}"
 
@@ -608,7 +622,7 @@ class Sfp::BSig
 			modules = JSON[body]
 			list = ''
 			schemata.each { |m|
-				list += "#{m} " if m != 'object' and File.exist?("#{modules_dir}/#{m}") and
+				list += "#{m} " if File.exist?("#{modules_dir}/#{m}") and
 				                   (not modules.has_key?(m) or modules[m] != get_local_module_hash(m, modules_dir).to_s)
 			}
 

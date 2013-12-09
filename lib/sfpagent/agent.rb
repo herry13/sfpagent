@@ -603,11 +603,12 @@ module Sfp
 				agents = (json == '' ? {} : JSON[json])
 				current_hash = agents.hash
 
-				data.each { |k,v|
-					if !agents.has_key?(k) or v.nil? or agents[k].hash != v.hash
-						agents[k] = v
-					end
-				}
+				#data.each { |k,v|
+				#	if !agents.has_key?(k) or v.nil? or agents[k].hash != v.hash
+				#		agents[k] = v
+				#	end
+				#}
+				agents.merge!(data)
 				agents.keys.each { |k| agents.delete(k) if agents[k].nil? }
 
 				if current_hash != agents.hash
