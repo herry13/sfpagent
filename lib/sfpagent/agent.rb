@@ -629,8 +629,8 @@ module Sfp
 						begin
 							code, _ = NetHelper.put_data(agent['sfpAddress'], agent['sfpPort'], '/agents', http_data, 5, 20)
 							raise Exception if code != '200'
-						rescue Exception => e
-							Sfp::Agent.logger.warn "Push agents list to #{agent['sfpAddress']}:#{agent['sfpPort']} [Failed]"
+						rescue #Exception => e
+							#Sfp::Agent.logger.warn "Push agents list to #{agent['sfpAddress']}:#{agent['sfpPort']} [Failed]"
 						end
 					}
 				}

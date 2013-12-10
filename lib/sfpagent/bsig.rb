@@ -16,7 +16,6 @@ class Sfp::BSig
 		@lock = Mutex.new
 		@enabled = false
 		@status = :stopped
-		@lock_postprocess = Mutex.new
 	end
 
 	def stop
@@ -176,7 +175,7 @@ class Sfp::BSig
 				lock.synchronize { status << stat }
 			}
 		end
-		wait? { (status.length >= selected_operators.length) }
+		wait_until? { (status.length >= selected_operators.length) }
 		Sfp::Agent.logger.info "[#{mode}] exec status: #{status.inspect}"
 		status.each { |stat|
 			return :failure if stat == :failure
@@ -185,7 +184,7 @@ class Sfp::BSig
 		:repaired
 	end
 
-	def wait?
+	def wait_until?
 		until yield do
 			sleep 1
 		end
@@ -256,7 +255,7 @@ class Sfp::BSig
 					lock.synchronize { status << stat }
 				}
 			end
-			wait? { status.length >= agents_goal.length }
+			wait_until? { status.length >= agents_goal.length }
 			Sfp::Agent.logger.info "[#{mode}] achieve_remote_goal: #{status}"
 			status.each { |stat| return false if !stat }
 		end
@@ -557,18 +556,16 @@ class Sfp::BSig
 	end
 
 	def postprocess_delete_vm(operator)
-		@lock_postprocess.synchronize {
-			_, agent_name, _ = operator['parameters']['$.vm'].split('.', 3)
+		_, agent_name, _ = operator['parameters']['$.vm'].split('.', 3)
 
-			Sfp::Agent.logger.info "Postprocess delete VM #{agent_name}"
+		Sfp::Agent.logger.info "Postprocess delete VM #{agent_name}"
 
-			# update agents database (automatically broadcast to other agents)
-			Sfp::Agent.set_agents({agent_name => nil})
-		}
+		# update agents database (automatically broadcast to other agents)
+		Sfp::Agent.set_agents({agent_name => nil})
 	end
 
 	def postprocess_create_vm(operator)
-		@lock_postprocess.synchronize {
+		3.times do |i|
 			refs = operator['name'].split('.')
 			vms_ref = refs[0..-2].join('.') + '.vms'
 
@@ -598,6 +595,16 @@ class Sfp::BSig
 				address = data[agent_name]['sfpAddress']
 				port = data[agent_name]['sfpPort']
 
+				# wait until agent is running
+				wait_until? {
+					begin
+						code, _ = get_data(address, port, '/')
+						true
+					rescue
+						false
+					end
+				}
+
 				# push required modules
 				push_modules(model, address, port)
 
@@ -605,14 +612,14 @@ class Sfp::BSig
 				code, _ = put_data(address, port, '/agents', {'agents' => JSON.generate(Sfp::Agent.get_agents)})
 
 				# push new agent's model
-				code, _ = put_data(address, port, '/model', {'model' => JSON.generate({agent_name => model['model']})})
+				code1, _ = put_data(address, port, '/model', {'model' => JSON.generate({agent_name => model['model']})})
 
 				# push new agent's BSig model
-				code, _ = put_data(address, port, '/bsig', {'bsig' => JSON.generate(model['bsig'])}) if code == '200'
+				code2, _ = put_data(address, port, '/bsig', {'bsig' => JSON.generate(model['bsig'])}) if code == '200'
 
-				return (code == '200')
+				return (code1 == '200' and code2 == '200')
 			end
-		}
+		end
 		false
 	end
 

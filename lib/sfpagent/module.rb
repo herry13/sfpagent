@@ -141,7 +141,7 @@ module Sfp::Resource
 		begin
 			uri = URI.parse(source)
 			http = nil
-			if use_http_proxy?(uri)
+			if use_http_proxy?(uri) and ENV['http_proxy'].to_s.strip.length > 0
 				begin
 					proxy = URI.parse(ENV['http_proxy'])
 					http = Net::HTTP::Proxy(proxy.host, proxy.port).new(uri.host, uri.port)
