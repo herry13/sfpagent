@@ -634,6 +634,35 @@ module Sfp
 						end
 					}
 				}
+
+				# update /etc/hosts so other applications can resolve the names correctly
+				begin
+					File.open('/etc/hosts', File::RDWR, 0644) do |f|
+						f.flock(File::LOCK_EX)
+						output = ''
+						### remove previous records
+						f.read.each_line do |line|
+							if line =~ /# Edited by Nuri/
+								break
+							else
+								output << line
+							end
+						end
+						### add current records
+						output << "# Edited by Nuri (don't change or add anything below this line)\n"
+						agents.each do |name,agent|
+							next if not (agent['sfpAddress'] =~ /^(([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])\.){3}([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])$/)
+							output << "#{agent['sfpAddress']}\t#{name}\n"
+						end
+						### save records
+						f.rewind
+						f.write(output)
+						f.flush
+						f.truncate(f.pos)
+					end
+				rescue Exception => e
+					Sfp::Agent.logger.error e.to_s
+				end
 			end
 
 			true
