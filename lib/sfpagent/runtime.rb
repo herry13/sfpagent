@@ -89,7 +89,7 @@ class Sfp::Runtime
 
 		# accumulate children's state
 		object.each { |name,child|
-			next if name.to_s[0,1] == '_'
+			next if name.to_s[0,1] == '_' or state.has_key?(name)
 			state[name] = get_object_state(child, model[name])
 		}
 
