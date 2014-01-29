@@ -380,7 +380,7 @@ class Sfp::BSig
 			Sfp::Agent.logger.info "[#{mode}] Request goal to #{agent_name}@#{agent['sfpAddress']}:#{agent['sfpPort']} #{code}"
 			(code == '200')
 		rescue Exception => exp
-			Sfp::Agent.logger.info "[#{mode}] Request goal to #{agent_name} - error: #{exp}\n#{exp.bracktrace.join("\n")}"
+			Sfp::Agent.logger.info "[#{mode}] Request goal to #{agent_name} - error: #{exp}\n#{exp.backtrace.join("\n")}"
 			return true if check_not_created_agent(agent_name, goal)
 			false
 		end
