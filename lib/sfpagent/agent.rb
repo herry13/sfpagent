@@ -8,6 +8,7 @@ require 'net/http'
 require 'logger'
 require 'json'
 require 'digest/md5'
+require 'shellwords'
 
 module Sfp
 	module Agent
@@ -513,8 +514,8 @@ module Sfp
 
 		def self.uninstall_module(name)
 			return false if @@config[:modules_dir] == ''
-			
-			module_dir = "#{@@config[:modules_dir]}/#{name}"
+			module_dir = Shellwords.escape(File.expand_path("#{@@config[:modules_dir]}/#{name}"))
+			return false if not subpath(module_dir, @@config[:modules_dir])
 			if File.directory?(module_dir)
 				result = !!system("rm -rf #{module_dir}")
 			else
@@ -542,8 +543,9 @@ module Sfp
 			end
 
 			# delete old files
-			module_dir = "#{@@config[:modules_dir]}/#{name}"
-			system("rm -rf #{module_dir}") if File.exist? module_dir
+			module_dir = Shellwords.escape("#{@@config[:modules_dir]}/#{name}")
+			return false if not subpath(module_dir, @@config[:modules_dir])
+			system("rm -rf #{module_dir}") if File.exist?(module_dir)
 
 			# save the archive
 			Dir.mkdir("#{module_dir}", 0700)
@@ -553,10 +555,14 @@ module Sfp
 			system("cd #{module_dir}; tar xvf data.tgz")
 			Dir.entries(module_dir).each { |name|
 				next if name == '.' or name == '..'
-				if File.directory? "#{module_dir}/#{name}"
-					system("cd #{module_dir}/#{name}; mv * ..; mv .* .. 2>/dev/null; cd ..; rm -rf #{name}")
+				name = Shellwords.escape(name)
+				target = "#{module_dir}/#{name}"
+				return false if not subpath(target, @@config[:modules_dir])
+				if File.directory? target
+					system("cd #{target} && mv * .. && mv .* .. 2>/dev/null ; cd .. && rm -rf #{name}")
 				end
-				system("cd #{module_dir}; rm data.tgz")
+				datafile = "#{module_dir}/data.tgz"
+				File.delete(datafile) if File.exist?(datafile)
 			}
 
 			load_modules(@@config) if reload
@@ -661,7 +667,7 @@ module Sfp
 						f.truncate(f.pos)
 					end
 				rescue Exception => e
-					Sfp::Agent.logger.error e.to_s
+					Sfp::Agent.warn 'cannot update /etc/hosts'
 				end
 			end
 
@@ -676,6 +682,15 @@ module Sfp
 			@@agents_database_modified_time = File.mtime(AgentsDataFile)
 			@@agents_database = JSON[File.read(AgentsDataFile)]
 		end
+
+		# return true if path1 is subpath of path2, otherwise false
+		def self.subpath(path1, path2)
+			path1 = File.expand_path(path1)
+			path2 = File.expand_path(path2)
+			(path1[0,path2.length] == path2)
+		end
+
+
 
 		class Maintenance
 			IntervalTime = 600 # 10 minutes

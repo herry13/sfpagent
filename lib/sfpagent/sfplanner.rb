@@ -1,5 +1,7 @@
 #!/usr/bin/env ruby
 
+require 'shellwords'
+
 class Planner
 	def initialize(p={})
 		# TODO
@@ -63,7 +65,7 @@ class Planner
 				f.write(dot)
 				f.flush
 			}
-			!!system("dot -Tpng -o #{image_file} #{dot_file}")
+			!!system("dot -Tpng -o #{Shellwords.escape(image_file)} #{Shellwords.escape(dot_file)}")
 		ensure
 			File.delete(dot_file) if File.exist?(dot_file)
 		end
